@@ -8,6 +8,7 @@ from raser.supports.paths import component_file_path
 
 
 COMPONENT_ROOT = PACKAGE_ROOT / "components"
+# TODO: Replace this allowlist with the complete schema consumed by Detector.
 DETECTOR_CONFIG_KEYS = {
     "U_const",
     "area_factor",

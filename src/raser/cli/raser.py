@@ -14,7 +14,7 @@ from raser.supports.paths import project_root_context
 from raser.supports.paths import work_root
 
 
-VERSION = 4.1
+VERSION = "5.0"
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]

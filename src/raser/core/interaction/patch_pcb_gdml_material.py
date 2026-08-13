@@ -7,6 +7,8 @@ from pathlib import Path
 from raser.supports.paths import app_file_path
 from raser.supports.paths import project_path
 
+# TODO: Receive the Signal-owned GDML configuration path from the caller.
+
 def patch_gdml():
     raw_path = project_path('g4experiment', 'pcb_readout_raw.gdml')
     out_path = Path(raw_path).with_name('pcb_readout.gdml')

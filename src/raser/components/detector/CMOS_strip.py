@@ -4,6 +4,9 @@ import gmsh
 
 from raser.supports.output import create_path
 from raser.supports.paths import project_path
+
+# TODO: Move executable mesh generation out of the declarative Components layer.
+
 geo = gmsh.model.geo
 
 gmsh.initialize()

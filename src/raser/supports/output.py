@@ -9,6 +9,8 @@ import os
 
 from raser.supports.paths import module_work_path
 
+# TODO: Require an output owner; module-derived paths are for direct dev runs only.
+
 def output(current_file_path, *label):
     """
     Usage: output_file_path(__file__, *label)

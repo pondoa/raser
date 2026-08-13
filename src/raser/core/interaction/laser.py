@@ -46,6 +46,7 @@ class LaserInjection:
         self.wavelength = laser_dic["wavelength"]*1e-3 #um
         self.temporal_FWHM = laser_dic["temporal_FWHM"]
         self.pulse_energy = laser_dic["pulse_energy"]
+        # TODO: Rename spacial_FWHM to spatial_FWHM and fix l_Rayleigh handling.
         self.spacial_FWHM = laser_dic["spacial_FWHM"]#um
         self.central_time = laser_dic["central_time"]
         if "l_Reyleigh" not in laser_dic:

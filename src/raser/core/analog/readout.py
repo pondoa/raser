@@ -220,6 +220,7 @@ class Amplifier:
             tmp_cirs, raws = set_tmp_cir(self.read_ele_num, path, input_current_strs, ele_cir, str(time_stamp)+"_"+str(pid),)
             for i in range(self.read_ele_num):
                 print("Running ngspice for amplifier simulation on electrode No.%d..."%(i+1))
+                # TODO: Surface ngspice failure through checked argument execution.
                 subprocess.run(['ngspice -b '+tmp_cirs[i]], shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,)
             self.read_raw_file(raws)
             # TODO: delete the files properly

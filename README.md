@@ -1,150 +1,51 @@
-RASER
-======
+# RASER
 
-**RA**diation **SE**miconducto**R** 
+> Version 5.0 · Python 3.11 · Semiconductor-detector simulation
 
-Welcome to Fork and contribute! 
+RASER (**RA**diation **SE**miconducto**R**) connects detector fields, particle
+interactions, induced-current calculation, electronics, and experiment-level
+workflows through one command-line interface.
 
-link: <https://raser.team/docs/raser/> 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18905684.svg)](https://doi.org/10.5281/zenodo.18905684)
 
-Citation: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18905684.svg)](https://doi.org/10.5281/zenodo.18905684)
+---
 
-Prerequisites
-======
+## 🚀 Use RASER
 
-RASER's CVMFS setup prefers a local SIF image when one is available, then falls
-back to the native conda route. Use conda for ROOT/ngspice/MKL where available
-and uv for Python packages. The SIF routes are kept under `bootstrap/` for
-cluster or containerized deployments.
+After activating a prepared environment, use the public CLI:
 
-When using git worktrees from this checkout, keep the SIF images and local
-runtime environments in the main checkout's ignored `img/`, `.conda/`, and
-`.venv/` directories. Link each worktree back to those shared paths, for
-example `ln -s ../../img .worktrees/dev-3d-lgad/img`,
-`ln -s ../../.conda .worktrees/dev-3d-lgad/.conda`, and
-`ln -s ../../.venv .worktrees/dev-3d-lgad/.venv`. This lets
-`env/setup_cvmfs.sh` find the same local runtime from every worktree without
-copying large SIF or environment directories.
+```bash
+raser --help
+raser signal HPK-Si-PiN
+```
 
-Geant4 is external to these routes. Before sourcing `env/setup.sh`, make
-`geant4-config` visible on `PATH`, or set `RASER_GEANT4_INSTALL` to the Geant4
-install prefix.
+Common workflows include:
 
-For the native Linux x86 conda route:
+| Goal | Command |
+| --- | --- |
+| Create a project | `raser project create my-sensor --template signal` |
+| Solve an electric field | `raser field solve -cv HPK-Si-PiN` |
+| Solve a weighting field | `raser field solve -wf HPK-Si-PiN` |
+| Generate a signal | `raser signal HPK-Si-PiN` |
+| Run a CCE study | `raser cce NJU-PiN` |
+| Run a time-resolution study | `raser timeres NJU-PiN` |
 
-    conda env create -p .conda/envs/raser -f env/conda-linux-x86.yml
-    conda activate $PWD/.conda/envs/raser
-    uv venv --system-site-packages --python "$(command -v python3.11)" .venv
-    uv pip install --python .venv/bin/python -r env/uv.txt
-    source env/setup_cvmfs.sh conda
+Use `raser <command> --help` for the current options. Generated fields and runs
+are stored under `work/` rather than in the package source tree.
 
-For the Ubuntu22.04 LCG cluster SIF route:
+## 📚 Documentation
 
-    apptainer build --mksquashfs-args '-processors 1' \
-        img/raser_ubuntu.sif bootstrap/ubuntu/raser-ubuntu-sif.def
-    source env/setup_cvmfs.sh ubuntu
-    raser signal HPK-Si-PiN
+- [Documentation index](docs/README.md)
+- [Install, activate, and run](docs/getting-started.md)
+- [Architecture and data paths](docs/architecture.md)
+- [Container build routes](bootstrap/README.md)
+- [Repository working rules](AGENTS.md)
 
-This route uses the ubuntu2204 LCG view for the matched Python 3.11, ROOT, and
-Geant4 ABI chain. The SIF supplies the project Python environment, ngspice, and
-the Ubuntu runtime libraries needed by the LCG binaries.
+## 🔖 Citation
 
-For the EL9 cluster SIF route:
+The archived RASER v4.0 release is available from
+[Zenodo](https://doi.org/10.5281/zenodo.18905684). Cite the software release and
+the relevant detector-study publication when reporting results produced with
+RASER.
 
-    apptainer build --mksquashfs-args '-processors 1' \
-        img/raser_el9.sif bootstrap/el9/raser-el9-sif.def
-    source env/setup_cvmfs.sh el9
-    raser signal HPK-Si-PiN
-
-Optional build tarballs can be cached under `bootstrap/ingredients/`. See
-`bootstrap/README.md` for route details. The single-processor squashfs option
-avoids mksquashfs thread creation failures seen on restricted cluster nodes.
-
-The native Linux x86 conda environment includes `root_base`, `ngspice`, and
-MKL. This gives users without a site ROOT installation a working PyROOT matched
-to Python 3.11.
-
-The matching explicit conda spec can be used instead of the YAML file:
-
-    conda create -p .conda/envs/raser -c conda-forge --file env/conda-linux-64.lock
-
-Geant4 is intentionally not installed by conda. Use the Geant4 already provided
-by the host environment, or install Geant4 from the official source
-distribution and point RASER at it:
-
-    export RASER_GEANT4_INSTALL=/path/to/geant4-install
-    source env/setup.sh
-
-For the macOS SIF route:
-
-    make run-raser-sif-macos
-
-For native Apple Silicon, use the macOS arm64 conda environment. It does not
-install MKL; `root_base` is installed in the conda environment so PyROOT
-matches Python 3.11, and ngspice is built from the official source tarball into
-the active conda environment. The pinned Python packages require macOS 14 or
-newer on arm64 because the devsim wheel is tagged `macosx_14_0_arm64`:
-
-    conda env create -p .conda/envs/raser -f env/conda-macos-arm64.yml
-    conda activate $PWD/.conda/envs/raser
-    env/install-ngspice-macos-arm64.sh
-    export RASER_GEANT4_INSTALL=/path/to/geant4-install
-    source env/setup.sh
-    uv venv --system-site-packages --python "$(command -v python3.11)" .venv
-    uv pip install --python .venv/bin/python -r env/uv.txt
-
-The matching explicit conda spec can be used instead of the YAML file:
-
-    conda create -p .conda/envs/raser -c conda-forge --file env/conda-macos-arm64.lock
-
-Before Run
-======
-
-While running raser you need in the directory of raser.
-
-run steps:
-
-    source env/setup.sh # before run
-    uv run python -m src.raser <option <option tag>>
-
-update:
-
-    git pull
-
-Output
-======
-
-The output of raser will store inside <directory of raser>/output/ .
-
-Run Options
-======
-
-checkout __main__.py for detail.
-
-Tutorial
-======
-
-For signal simulation of 
-    HPK-Si-PiN and HPK-Si-LGAD in 10.1016/j.nima.2024.169479 (under reorganization):
-
-    raser field [-cv] <device_name in `setting/detector`>
-    raser field -wf <device_name>
-    raser signal <device_name>
-    raser tct signal <device_name> <laser_name in `setting/laser`>
-
-For time resolution of 
-    NJU-PiN in 10.3389/fphy.2022.718071
-    SICAR-1 in 10.1007/s41605-023-00431-y and 10.1109/TNS.2024.3471863:
-
-    raser field [-cv] <device_name>
-    raser field -wf <device_name>
-    raser signal -s 20 <device_name>
-    raser resolution <device_name>
-
-For irradiation simulation of 
-    ATLAS ITk-md8 and ITk-Si-strip in arXiv:2504.20463
-    NJU-PiN in arXiv:2503.0901 6 (under reorganization):
-
-    raser field [-cv] <device_name>
-    raser field -wf <device_name>
-    raser signal <device_name>
+RASER is distributed under the [MIT License](LICENSE).

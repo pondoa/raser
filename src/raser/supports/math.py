@@ -20,6 +20,8 @@ from scipy.interpolate import griddata, RegularGridInterpolator
 import ROOT
 ROOT.gROOT.SetBatch(True)
 
+# TODO: Move scientific numerical helpers into the matching Core packages.
+
 x_bin_2d = 200
 y_bin_2d = 200
 

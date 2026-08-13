@@ -1,101 +1,71 @@
-# Repository Working Rules
+# Repository working rules
 
-- Treat environment, bootstrap, and runtime-path changes as forward-only. Do not roll them back or add fallback compatibility unless the user explicitly asks.
-- Do not add legacy import compatibility shims while reorganizing modules.
-- Keep `src/raser/` for installable, reusable RASER library code.
-- Keep repository-local applications under top-level `apps/`; applications may import `raser`, but `raser` library modules must not import `apps`.
-- The `raser` CLI may route to repository applications. CLI reachability does not make an application part of the installable library API.
-- Scientific-computing internals must use explicit contracts and fail visibly when the contract is not met. Do not add capability-probing fallbacks, silent scalar fallbacks, or compatibility fallback paths inside physics/numerics code unless the user explicitly asks for that behavior.
-- Simple 1D electric-field models must carry depletion-state parameters explicitly. Do not encode them as geometry-only linear profiles; below-depletion bias must leave an undepleted zero-field region unless a separate diffusion model is explicitly implemented.
+> Scope: RASER repository · Detailed setup: [docs/getting-started.md](docs/getting-started.md)
 
-## Environment Initialization
+Keep changes small, explicit, and verifiable.
 
-RASER's CVMFS setup prefers a local SIF image when one is available, then falls
-back to the native conda route. Use conda for ROOT/ngspice/MKL where available
-and uv for Python packages. The SIF routes are kept under `bootstrap/` for
-cluster or containerized deployments.
+---
 
-When using git worktrees from this checkout, keep the SIF images and local
-runtime environments in the main checkout's ignored `img/`, `.conda/`, and
-`.venv/` directories. Link each worktree back to those shared paths, for
-example `ln -s ../../img .worktrees/dev-3d-lgad/img`,
-`ln -s ../../.conda .worktrees/dev-3d-lgad/.conda`, and
-`ln -s ../../.venv .worktrees/dev-3d-lgad/.venv`. This lets
-`env/setup_cvmfs.sh` find the same local runtime from every worktree without
-copying large SIF or environment directories.
+## 🔀 Git and scope
 
-Geant4 is external to these routes. Before sourcing `env/setup.sh`, make
-`geant4-config` visible on `PATH`, or set `RASER_GEANT4_INSTALL` to the Geant4
-install prefix.
+- Inspect `git status --short --branch` before editing or testing. Preserve all
+  unrelated changes and stop if they cannot be isolated safely.
+- Work in a dedicated tree under `.worktrees/`; do not edit or commit on
+  `main`.
+- Touch only files required by the request. Do not combine feature work with
+  cleanup, formatting, packaging, dependency, or CI changes.
+- Never bypass hooks, weaken assertions, hide skipped work, or report partial
+  success as success.
 
-For the native Linux x86 conda route:
+## 🏗️ Code boundaries
 
-    conda env create -p .conda/envs/raser -f env/conda-linux-x86.yml
-    conda activate $PWD/.conda/envs/raser
-    uv venv --system-site-packages --python "$(command -v python3.11)" .venv
-    uv pip install --python .venv/bin/python -r env/uv.txt
-    source env/setup_cvmfs.sh conda
+- `src/raser/core/` contains reusable physics and numerical capabilities.
+- `src/raser/components/` contains reusable detector, source, electronics, and
+  ACTS definitions.
+- `src/raser/apps/` contains runnable workflows; apps may use Core, Components,
+  and Supports, but Core and Components must not import apps.
+- `src/raser/supports/` contains shared engineering infrastructure, and
+  `src/raser/cli/` only routes commands.
+- Use the public entry point `raser <command>`. Do not document source-tree
+  invocations such as `python -m src.raser`.
+- Do not add legacy import shims or compatibility fallbacks unless requested.
 
-For the Ubuntu22.04 LCG cluster SIF route:
+## 🧪 Scientific contracts
 
-    apptainer build --mksquashfs-args '-processors 1' \
-        img/raser_ubuntu.sif bootstrap/ubuntu/raser-ubuntu-sif.def
-    source env/setup_cvmfs.sh ubuntu
-    raser signal HPK-Si-PiN
+- Make units, shapes, inputs, outputs, and failure modes explicit. Do not add
+  capability-probing, silent scalar fallbacks, skipped records, or implicit
+  partial results.
+- One-dimensional electric-field models must represent depletion state
+  explicitly; below-depletion bias leaves an undepleted zero-field region
+  unless a diffusion model is implemented.
+- Tests must assert physical behavior, not only types, shapes, or constants.
+  Mock external services and mark heavy integrations explicitly.
 
-This route uses the ubuntu2204 LCG view for the matched Python 3.11, ROOT, and
-Geant4 ABI chain. The SIF supplies the project Python environment, ngspice, and
-the Ubuntu runtime libraries needed by the LCG binaries.
+## 🔧 Environment and dependencies
 
-For the EL9 cluster SIF route:
+- Treat environment, bootstrap, and runtime-path changes as forward-only.
+- RASER uses Python 3.11. Use conda or SIF routes for compiled dependencies and
+  `uv` with `env/uv.txt` for Python packages. The repository intentionally does
+  not use `uv.lock`.
+- Keep imports at module scope unless an optional dependency or demonstrated
+  circular import requires otherwise.
+- Do not change supported Python versions, dependency pins, packaging metadata,
+  release automation, or CI matrices unless they are in scope.
+- Keep environment installation separate from RASER usage in documentation;
+  simulation commands belong in usage or workflow sections.
 
-    apptainer build --mksquashfs-args '-processors 1' \
-        img/raser_el9.sif bootstrap/el9/raser-el9-sif.def
-    source env/setup_cvmfs.sh el9
-    raser signal HPK-Si-PiN
+## ✅ Verification
 
-Optional build tarballs can be cached under `bootstrap/ingredients/`. See
-`bootstrap/README.md` for route details. The single-processor squashfs option
-avoids mksquashfs thread creation failures seen on restricted cluster nodes.
+State observable success criteria before editing. Reproduce bugs before fixing
+them and add behavior-focused regression coverage. Run focused checks first,
+then the repository gates:
 
-The native Linux x86 conda environment includes `root_base`, `ngspice`, and
-MKL. This gives users without a site ROOT installation a working PyROOT matched
-to Python 3.11.
+```bash
+make format
+make lint
+make typecheck
+make tests
+```
 
-The matching explicit conda spec can be used instead of the YAML file:
-
-    conda create -p .conda/envs/raser -c conda-forge --file env/conda-linux-64.lock
-
-Geant4 is intentionally not installed by conda. Use the Geant4 already provided
-by the host environment, or install Geant4 from the official source
-distribution and point RASER at it:
-
-    export RASER_GEANT4_INSTALL=/path/to/geant4-install
-    source env/setup.sh
-
-For the macOS SIF route:
-
-    make run-raser-sif-macos
-
-For native Apple Silicon, use the macOS arm64 conda environment. It does not
-install MKL; `root_base` is installed in the conda environment so PyROOT
-matches Python 3.11, and ngspice is built from the official source tarball into
-the active conda environment. The pinned Python packages require macOS 14 or
-newer on arm64 because the devsim wheel is tagged `macosx_14_0_arm64`:
-
-    conda env create -p .conda/envs/raser -f env/conda-macos-arm64.yml
-    conda activate $PWD/.conda/envs/raser
-    env/install-ngspice-macos-arm64.sh
-    export RASER_GEANT4_INSTALL=/path/to/geant4-install
-    source env/setup.sh
-    uv venv --system-site-packages --python "$(command -v python3.11)" .venv
-    uv pip install --python .venv/bin/python -r env/uv.txt
-
-The matching explicit conda spec can be used instead of the YAML file:
-
-    conda create -p .conda/envs/raser -c conda-forge --file env/conda-macos-arm64.lock
-
-Before running RASER, work from the repository root:
-
-    source env/setup.sh
-    uv run python -m src.raser <option <option tag>>
+Report every failed, skipped, unavailable, or truncated check. A focused pass
+does not override a broader failure.

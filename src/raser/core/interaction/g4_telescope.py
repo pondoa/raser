@@ -33,6 +33,8 @@ from .stepping_action import GeneralSteppingAction
 from .run_action import GeneralRunAction
 from raser.supports.paths import app_file_path
 
+# TODO: Receive application-owned asset paths from the caller instead of resolving them in Core.
+
 verbose = 0
 flag = 0
 

@@ -30,6 +30,7 @@ def io_decorator(func):
                 print(stderr_output)
 
         except Exception as e:
+            # TODO: Preserve visible failure by re-raising or replacing this decorator.
             print(f"Function '{func.__name__}' failed with an exception:", e)
 
     return wrapper

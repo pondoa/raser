@@ -94,6 +94,7 @@ class DevsimField:
         for contact in read_out_contact:
             WeightingPotentialFiles.append(path + "weightingfield/{}/Potential_{}V.pkl".format(contact['name'], 1))
 
+        # TODO: Select assets only through an explicit field set.
         if irradiation_flux != 0 and field_set == "default":
             path = str(project_path("field", str(irradiation_flux))) + os.sep
 
@@ -409,6 +410,7 @@ class DevsimField:
             logger.warning(f"failed when getting field cache ({x:.1f}, {y:.1f}, {z:.1f}): {e}")
             return self._get_e_field(x, y, z) # 出错时不使用缓存，直接计算电场值，继承报错
     
+    # TODO: Propagate invalid field data instead of returning physical zero values.
     def get_doping_cached(self, x, y, z):
         try:
             if not self._is_position_valid(x, y, z):
