@@ -15,7 +15,7 @@ to use that object in the scenario.
 | [AFE](afe.md) | The analog front-end connected to the sensor electrical model |
 | [ADC](adc.md) | The digitization definition applied to frontend waveforms |
 | [Source](source/README.md) | A particle or decay source used by an Interaction |
-| [Laser](source/laser.md) | An optical injection used by a TCT Interaction |
+| [Laser](laser.md) | An optical injection used by a TCT Interaction |
 
 ## Project layout
 

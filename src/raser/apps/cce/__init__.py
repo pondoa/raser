@@ -1,7 +1,6 @@
 """Charge-collection experiment application."""
 
 from raser.apps import signal
-from raser.apps.cce import summary
 from raser.supports import jobs
 from raser.supports import runs
 
@@ -67,6 +66,8 @@ def run(kwargs):
 
 
 def collect(kwargs):
+    from raser.apps.cce import summary
+
     _prepare(kwargs)
     if kwargs.get("run") is None:
         kwargs["run"] = "latest"

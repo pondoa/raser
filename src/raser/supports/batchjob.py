@@ -1,70 +1,114 @@
-#!/usr/bin/env python3
-# -*- encoding: utf-8 -*-
-"""
-Description:  Run batch model
-@Date       : 2023/09/16 23:43:07
-@Author     : Yuhang Tan, Tao Yang, Chenxi Fu
-@version    : 3.0
-"""
+"""IHEP cluster job planning and submission."""
 
-import os
-import sys
-import subprocess
+from __future__ import annotations
+
 import grp
+import os
+import shlex
+import subprocess
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Sequence
 
-from raser.supports.output import create_path
 from raser.supports.paths import project_path
+
+
+@dataclass(frozen=True)
+class ClusterJobPlan:
+    job_file: Path
+    worker_command: tuple[str, ...]
+    submit_command: tuple[str, ...]
+
+    def as_dict(self) -> dict:
+        return {
+            "job_file": str(self.job_file),
+            "worker_command": list(self.worker_command),
+            "submit_command": list(self.submit_command),
+        }
 
 
 def job_dir(destination_subfolder):
     return project_path(destination_subfolder, "jobs")
 
 
-def main(destination_subfolder, command, batch_level, is_test):
-    stat_info = os.stat("./")
-    gid = stat_info.st_gid
-    group = grp.getgrgid(gid)[0]
+def _tokens(command: str | Sequence[str]) -> tuple[str, ...]:
+    return tuple(
+        shlex.split(command) if isinstance(command, str) else map(str, command)
+    )
 
-    mem = 8000 * batch_level
 
-    destination_job_dir = job_dir(destination_subfolder)
- 
-    create_path(destination_job_dir)
-    command_name = command.replace(" ","_").replace("/","_")
-    jobfile_name = str(destination_job_dir / (command_name+".job"))
-    IMGFILE = os.environ.get('IMGFILE')
-    if IMGFILE is None:
-        if not is_test:
-            raise RuntimeError("IMGFILE must be set before submitting a RASER batch job")
-        raser_shell = "raser"
-    else:
-        raser_shell = ( "/usr/bin/apptainer exec --env-file .raser/env" + " " \
-                    + IMGFILE + " " \
-                    + "raser"
+def plan_job(destination_subfolder, command, batch_level, *, group=None, image=None):
+    if batch_level <= 0:
+        raise ValueError("Batch memory level must be positive")
+    command_tokens = _tokens(command)
+    if not command_tokens:
+        raise ValueError("Batch worker command must contain tokens")
+    group_name = group or grp.getgrgid(os.stat(".").st_gid)[0]
+    memory_mb = 8000 * batch_level
+    directory = job_dir(destination_subfolder)
+    command_name = "_".join(command_tokens).replace("/", "_")
+    job_file = directory / f"{command_name}.job"
+    if image:
+        worker = (
+            "/usr/bin/apptainer",
+            "exec",
+            "--env-file",
+            ".raser/env",
+            str(image),
+            "raser",
+            *command_tokens,
         )
-    gen_job(jobfile_name, run_code=raser_shell+' '+command)
-    submit_job(jobfile_name, destination_subfolder, group, mem, is_test=is_test)
+    else:
+        worker = ("raser", *command_tokens)
+    submit = (
+        "hep_sub",
+        "-o",
+        str(directory),
+        "-e",
+        str(directory),
+        str(job_file),
+        "-mem",
+        str(memory_mb),
+        "-g",
+        group_name,
+    )
+    return ClusterJobPlan(job_file, worker, submit)
+
+
+def main(destination_subfolder, command, batch_level, is_test=False):
+    image = os.environ.get("IMGFILE")
+    if image is None and not is_test:
+        raise RuntimeError("IMGFILE must be set before cluster submission")
+    plan = plan_job(
+        destination_subfolder,
+        command,
+        batch_level,
+        image=image,
+    )
+    if is_test:
+        print(shlex.join(plan.submit_command))
+        return plan
+    gen_job(plan.job_file, shlex.join(plan.worker_command))
+    submit_job(plan)
+    return plan
+
 
 def gen_job(jobfile_name, run_code):
-    jobfile = open(jobfile_name, "w")
-    jobfile.write(run_code)
-    jobfile.close()
-    print("Generate job file: ", jobfile_name)
+    path = Path(jobfile_name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(str(run_code) + "\n", encoding="utf-8")
+    path.chmod(0o755)
+    return path
 
-def submit_job(jobfile_name, destination_subfolder, group, mem, is_test=False):
-    print("Submit job file: ", jobfile_name)
-    os.chmod(jobfile_name, 0o755)
-    destination_job_dir = job_dir(destination_subfolder)
-    command = "hep_sub -o {} -e {} {} -mem {} -g {}".format(
-        destination_job_dir, destination_job_dir, jobfile_name, mem, group)
-    run_cmd(command, is_test)
+
+def submit_job(plan: ClusterJobPlan):
+    subprocess.run(plan.submit_command, shell=False, check=True)
+
 
 def run_cmd(command, is_test=False):
+    command_tokens = _tokens(command)
     if is_test:
-        sys.stdout.write(command+'\n')
-        return 
-    subprocess.run([command],shell=True)
-    
-
-if __name__ == "__main__":
-    main(sys.argv[1],sys.argv[2])
+        print(shlex.join(command_tokens))
+        return command_tokens
+    subprocess.run(command_tokens, shell=False, check=True)
+    return command_tokens

@@ -22,4 +22,3 @@ applications. The package-level data flow is defined in
 - [PCB](draft/pcb.md)
 - [ASIC](draft/asic.md)
 - [ADC](draft/adc.md)
-- [Control](draft/control.md)

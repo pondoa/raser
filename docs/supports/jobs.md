@@ -22,7 +22,7 @@ index. Each worker command equals the normalized command followed by
 | --- | --- | --- |
 | Local | Invoke the active Python environment with bounded concurrency | Every worker exited successfully |
 | Cluster | Write and submit one safely quoted `raser` command per index | Every requested job was accepted |
-| Dry run | Generate the job file and show the scheduler command | Scheduler remains idle |
+| Dry run | Return the worker and scheduler plans | Filesystem and scheduler remain unchanged |
 
 Local concurrency is bounded by requested workers and available CPUs. Command
 arguments remain a token sequence through local execution and planning; shell

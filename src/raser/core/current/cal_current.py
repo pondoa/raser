@@ -25,7 +25,8 @@ from .carrier import VectorizedCarrierSystem
 
 from ..interaction.carrier_list import CarrierListFromG4P
 from ..interaction.toy_mip import ToyMIPLineSource
-from raser.supports.math import Vector, signal_convolution
+from .convolution import signal_convolution
+from .vector import Vector
 from raser.supports.output import output
 
 t_bin = {
@@ -100,15 +101,19 @@ class CalCurrent:
     def _run_current_calculation(self, my_d, my_f, ionized_pairs, track_position):
         logger.info("current calculation start...")
         self.t_bin = t_bin[my_d.dimension]
-        self.t_end = t_end[my_d.dimension]
-        self.t_start = t_start[my_d.dimension]
-        self.delta_t = delta_t[my_d.dimension]
-        self.n_bin = int((self.t_end+t_tol-self.t_start)/self.t_bin)
+        relative_end = t_end[my_d.dimension]
+        relative_start = t_start[my_d.dimension]
         if my_d.is_plugin():
             self.t_bin = t_bin[1]
-            self.t_end = t_end[1]
-            self.t_start = t_start[1]
-            self.delta_t = delta_t[1]
+            relative_end = t_end[1]
+            relative_start = t_start[1]
+        self.delta_t = delta_t[1] if my_d.is_plugin() else delta_t[my_d.dimension]
+        creation_times = [float(position[3]) for position in track_position]
+        first_creation = min(creation_times, default=0.0)
+        last_creation = max(creation_times, default=0.0)
+        self.t_start = first_creation + relative_start
+        self.t_end = last_creation + relative_end
+        self.n_bin = int((self.t_end + t_tol - self.t_start) / self.t_bin)
 
         self.read_ele_num = my_d.read_ele_num
         if hasattr(my_d, "x_ele_num") and hasattr(my_d, "y_ele_num"):
@@ -428,8 +433,6 @@ class CalCurrent:
                 hist.SetBinContent(idx, float(value))
 
         targets = [self.positive_cu, self.negative_cu, self.sum_cu]
-        if hasattr(self, "cross_talk_cu"):
-            targets.append(getattr(self, "cross_talk_cu"))
         if hasattr(self, "gain_current"):
             targets.append(getattr(self.gain_current, "positive_cu", []))
             targets.append(getattr(self.gain_current, "negative_cu", []))
@@ -536,13 +539,6 @@ class CalCurrent:
                 self.gain_current.positive_cu[read_ele_num].SetLineWidth(2)
                 self.gain_current.negative_cu[read_ele_num].SetLineWidth(2)
 
-            has_cross_talk = hasattr(self, "cross_talk_cu") and read_ele_num < len(self.cross_talk_cu)
-            if ("strip" in self.det_model or "pixel" in self.det_model) and has_cross_talk:
-                # make sure you run cross_talk() first and attached cross_talk_cu to self
-                self.cross_talk_cu[read_ele_num].Draw("SAME HIST")
-                self.cross_talk_cu[read_ele_num].SetLineColor(420)#kGreen+4
-                self.cross_talk_cu[read_ele_num].SetLineWidth(2)
-
             legend = ROOT.TLegend(0.5, 0.2, 0.8, 0.5)
             legend.AddEntry(self.negative_cu[read_ele_num], "electron", "l")
             legend.AddEntry(self.positive_cu[read_ele_num], "hole", "l")
@@ -550,9 +546,6 @@ class CalCurrent:
             if hasattr(self, "gain_current"):
                 legend.AddEntry(self.gain_current.negative_cu[read_ele_num], "electron gain", "l")
                 legend.AddEntry(self.gain_current.positive_cu[read_ele_num], "hole gain", "l")
-
-            if "strip" in self.det_model and has_cross_talk:
-                legend.AddEntry(self.cross_talk_cu[read_ele_num], "cross talk", "l")
 
             legend.AddEntry(self.sum_cu[read_ele_num], "total", "l")
             
@@ -573,7 +566,7 @@ class CalCurrent:
             x.append(i+1)
             sum_charge=0
             for j in range(self.n_bin):
-                sum_charge=sum_charge+self.cross_talk_cu[i].GetBinContent(j)*self.t_bin
+                sum_charge=sum_charge+self.sum_cu[i].GetBinContent(j)*self.t_bin
             charge.append(sum_charge/1.6e-19)
         logger.info("Collected charge per electrode (e): %s", list(charge))
         n=int(len(charge))
@@ -594,7 +587,7 @@ class CalCurrent:
         for i in range(self.x_ele_num*self.y_ele_num):
             sum_charge=0
             for j in range(self.n_bin):
-                sum_charge=sum_charge+self.cross_talk_cu[i].GetBinContent(j)*self.t_bin
+                sum_charge=sum_charge+self.sum_cu[i].GetBinContent(j)*self.t_bin
             cce.Fill(i%self.x_ele_num, i//self.x_ele_num, sum_charge/1.6e-19)
             charge.append(sum_charge/1.6e-19)
         logger.info("Collected charge per electrode (e): %s", list(charge))
@@ -829,9 +822,6 @@ class CalCurrentG4P(CalCurrent):
             G4P_carrier_list.track_position,
             keep_drift_paths=keep_drift_paths,
         )
-        if self.read_ele_num > 1:
-            #self.cross_talk()
-            pass
 
 
 class CalCurrentToyMIP(CalCurrent):

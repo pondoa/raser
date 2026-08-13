@@ -31,11 +31,7 @@ Direct implementation capabilities are grouped under `raser dev`:
 | Developer command | Core package |
 | --- | --- |
 | `frontend` | [Frontend](../core/frontend.md) |
-| `control` | [Control draft](../core/draft/control.md) |
 | `current` | [Current](../core/current.md) |
-| `adc` | [ADC draft](../core/draft/adc.md) |
-| `field` | [Field](../core/field.md) |
-| `interaction` | [Interaction](../core/interaction.md) |
 | `metrics` | [Metrics](../core/metrics.md) |
 
 CLI help is the authoritative syntax and option reference. Unregistered

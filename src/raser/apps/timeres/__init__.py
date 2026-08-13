@@ -3,7 +3,6 @@
 from pathlib import Path
 
 from raser.apps import signal
-from raser.apps.timeres import summary
 from raser.supports import jobs
 from raser.supports import runs
 
@@ -32,7 +31,9 @@ def _run_root(kwargs):
     voltage = kwargs.get("voltage")
     field = kwargs.get("field")
     if run_id == "latest":
-        return runs.latest_run_path("timeres", source=source, voltage=voltage, field=field)
+        return runs.latest_run_path(
+            "timeres", source=source, voltage=voltage, field=field
+        )
     path = Path(str(run_id))
     if path.is_absolute() or len(path.parts) > 1:
         return path
@@ -52,6 +53,9 @@ def _job_tail(kwargs):
 
 def _run_jobs(kwargs):
     if kwargs.get("job") is not None:
+        from .g4_interaction import TimeresActionInitialization
+
+        kwargs["_g4_action_initialization"] = TimeresActionInitialization
         signal.run_signal(kwargs)
         return False
 
@@ -74,14 +78,25 @@ def _run_jobs(kwargs):
 
 def run(kwargs):
     _prepare(kwargs)
+    from .workflow import build_plan
+
+    plan = build_plan(kwargs)
+    if kwargs.get("dry_run"):
+        plan.show()
+        return plan
     if kwargs.get("collect"):
         collect(kwargs)
         return
+    from raser.apps._planning import activate_plan
+
+    activate_plan(plan, kwargs)
     if _run_jobs(kwargs):
         collect(kwargs)
 
 
 def collect(kwargs):
+    from raser.apps.timeres import summary
+
     _prepare(kwargs)
     if kwargs.get("run") is None:
         kwargs["run"] = "latest"

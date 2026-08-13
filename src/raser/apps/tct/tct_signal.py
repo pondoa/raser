@@ -22,7 +22,7 @@ ROOT.gROOT.SetBatch(True)
 from raser.core.device import build_device as bdv
 from raser.core.field import devsim_field as devfield
 from raser.core.current import cal_current as ccrt
-from raser.core.analog.readout import Amplifier
+from raser.core.frontend.legacy_readout import Amplifier
 from raser.core.interaction.laser import LaserInjection
 from raser.supports.output import output, create_path
 from raser.supports.paths import component_path
@@ -57,7 +57,7 @@ def main(kwargs):
 
     if kwargs['laser'] != None:
         laser = kwargs['laser']
-        laser_json = component_path("source", "laser", laser + ".json")
+        laser_json = component_path("laser", laser + ".json")
         with open(laser_json) as f:
             laser_dic = json.load(f)
     else:
@@ -69,13 +69,23 @@ def main(kwargs):
     else:
         amplifier = my_d.amplifier
 
-    my_f = devfield.DevsimField(my_d.device, my_d.dimension, voltage, my_d.read_out_contact, my_d.mesher, is_plugin=my_d.is_plugin(), irradiation_flux=my_d.irradiation_flux, bounds=my_d.bound,)
+    my_f = devfield.DevsimField(
+        my_d.device,
+        my_d.dimension,
+        voltage,
+        my_d.read_out_contact,
+        my_d.mesher,
+        is_plugin=my_d.is_plugin(),
+        irradiation_flux=my_d.irradiation_flux,
+        bounds=my_d.bound,
+        field_directory=kwargs["_field_directory"],
+    )
     if "lgad" in my_d.det_model:
         my_d.gain_rate_cal(my_f)
     my_l = LaserInjection(my_d, laser_dic)
 
     my_current = ccrt.CalCurrentLaser(my_d, my_f, my_l)
-    path = output(__file__, my_l.model)
+    path = kwargs["_run_path"]
 
     ele_current = Amplifier(my_current.sum_cu, amplifier, CDet=my_d.capacitance)
     if kwargs['scan'] != None: #assume parameter alter

@@ -22,7 +22,7 @@ place those sensors in measurement or simulation scenarios.
 | [Frontend](core/frontend.md) | Sensor electrical model and frontend circuit calculation |
 | [Metrics](core/metrics.md) | Waveform and readout observables |
 
-PCB, ASIC, ADC, and control designs are maintained under
+PCB, ASIC, and ADC designs are maintained under
 [`core/draft/`](core/draft/).
 
 ## Applications
@@ -51,7 +51,7 @@ scenario.
 | [AFE component](components/afe.md) | Analog front-end circuit selection |
 | [ADC component](components/adc.md) | Waveform digitization selection |
 | [Source components](components/source/README.md) | Beam and decay sources |
-| [Laser component](components/source/laser.md) | Optical injection |
+| [Laser component](components/laser.md) | Optical injection |
 
 ## Supports
 

@@ -1,35 +1,49 @@
-'''
-Description:  output.py
-@Date       : 2023
-@Author     : Chenxi Fu
-@version    : 1.0
-'''
+"""Project-owned output paths and narrow filesystem operations."""
 
-import os
+from __future__ import annotations
+
+from pathlib import Path
 
 from raser.supports.paths import module_work_path
+from raser.supports.paths import project_root
 
-# TODO: Require an output owner; module-derived paths are for direct dev runs only.
+
+def _relative_parts(parts) -> tuple[str, ...]:
+    values = tuple(str(part) for part in parts)
+    for value in values:
+        path = Path(value)
+        if path.is_absolute() or ".." in path.parts:
+            raise ValueError(f"Output label must remain inside the project: {value}")
+    return values
+
+
+def owned_path(owner: str, *parts: str) -> Path:
+    labels = _relative_parts((owner, *parts))
+    if not owner:
+        raise ValueError("Output owner must be named")
+    return project_root().joinpath(*labels)
+
 
 def output(current_file_path, *label):
-    """
-    Usage: output_file_path(__file__, *label)
+    """Legacy module-owned output directory."""
+    path = module_work_path(current_file_path, *_relative_parts(label))
+    create_path(path)
+    return str(path.resolve())
 
-    Send generated files into the current project directory, grouped by module.
-
-    Notice: Do not iterate this function. One call per use.
-    """
-    output_file_path = os.path.abspath(module_work_path(current_file_path, *label))
-    create_path(output_file_path)
-    # 星号将列表转化为递归，头一个os.sep使其输出绝对路径；外圈abspath考虑潜在的windows用户
-    return output_file_path
 
 def create_path(path):
-    """If the path does not exit, create the path"""
-    if not os.access(path, os.F_OK):
-        os.makedirs(path, exist_ok=True) 
+    destination = Path(path)
+    destination.mkdir(parents=True, exist_ok=True)
+    return destination
+
 
 def delete_file(path):
-    """If the file exists, delete the file"""
-    if os.access(path, os.F_OK):
-        os.remove(path)
+    target = Path(path).resolve()
+    try:
+        target.relative_to(project_root().resolve())
+    except ValueError as exc:
+        raise ValueError(
+            f"File removal must remain inside the project: {target}"
+        ) from exc
+    if target.exists():
+        target.unlink()

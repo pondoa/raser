@@ -82,5 +82,5 @@ Job execution is defined in [Jobs](jobs.md); artifact locations follow
 
 Invalid configuration fails before run reservation. Incomplete specifications
 name the missing field. Identity collisions fail before writing. Missing or
-ambiguous selection raises an explicit error. A failed run remains inspectable
-with its failed status.
+ambiguous selection raises an explicit error. Failures after reservation
+preserve the run directory and record.

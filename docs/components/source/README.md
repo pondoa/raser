@@ -15,5 +15,5 @@ Am241, Sr90, and Fe55 are concrete Source entries within the decay family.
 Their isotope-specific spectra and geometry belong to the corresponding
 entries.
 
-[Laser](laser.md) is a separate component type because its optical parameters
+[Laser](../laser.md) is a separate component type because its optical parameters
 enter the laser Interaction directly.

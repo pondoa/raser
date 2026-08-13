@@ -8,56 +8,54 @@
 @Version :   1.0
 '''
 
-import sys
 import os
-import subprocess
 import time
-import math
 
 import devsim 
-import numpy as np
 
 if __name__ == "__main__":
     __package__ = "raser.core.field"
 
 from ..device.build_device import Detector
 from .create_mesh import DevsimMesh
-from .create_parameter import create_parameter, delete_init
+from .create_parameter import create_parameter
 from . import save_milestone
 from . import loop_section
 from . import physics_drift_diffusion
-from raser.supports.output import output
+from raser.supports.output import create_path
 from .devsim_draw import *
 
-paras = {
-    "absolute_error_Initial" : 1e10, 
-    "relative_error_Initial" : 1e-4, 
-    "maximum_iterations_Initial" : 100,
-
-    "absolute_error_VoltageSteps" : 1e20, 
-    "relative_error_VoltageSteps" : 1e-4, 
-    "maximum_iterations_VoltageSteps" : 100,
-
-    "milestone_mode" : True,
-    "milestone_step" : 100.0,
-
-    "max_voltage_step" :8.0,
-    "increase_factor": 2.0,
-    "decrease_factor":0.5,
-
-    "voltage_step" : 1.0,
-    "acreal" : 1.0, 
-    "acimag" : 0.0,
-    "frequency" : 1000.0,
-    "Cylindrical_coordinate": False,
-
-    "ac-weightfield" : False,
-
-    "Voltage-step-model" : False,
-    "step":1,
-}
-
 os.environ["OMP_NUM_THREADS"] = "1"
+
+
+def _legacy_solver_parameters(configuration, *, weightfield):
+    solver = configuration["solver"]
+    initial = solver["initial"]
+    voltage_step = solver["voltage_step"]
+    ac = solver["ac"]
+    return {
+        "absolute_error_Initial": float(initial["absolute_error"]),
+        "relative_error_Initial": float(initial["relative_error"]),
+        "maximum_iterations_Initial": int(initial["maximum_iterations"]),
+        "absolute_error_VoltageSteps": float(voltage_step["absolute_error"]),
+        "relative_error_VoltageSteps": float(voltage_step["relative_error"]),
+        "maximum_iterations_VoltageSteps": int(
+            voltage_step["maximum_iterations"]
+        ),
+        "milestone_mode": True,
+        "milestone_step": float(solver["saved_voltage_interval"]),
+        "max_voltage_step": float(voltage_step["maximum"]),
+        "increase_factor": float(voltage_step["increase_factor"]),
+        "decrease_factor": float(voltage_step["decrease_factor"]),
+        "voltage_step": float(voltage_step["initial"]),
+        "acreal": float(ac["real"]),
+        "acimag": float(ac["imaginary"]),
+        "frequency": float(ac["frequency"]),
+        "area_factor": float(configuration["area_factor"]),
+        "Cylindrical_coordinate": False,
+        "ac-weightfield": False,
+        "weightfield": bool(weightfield),
+    }
 
 def main (kwargs):
     simname = kwargs['target']
@@ -67,23 +65,30 @@ def main (kwargs):
     irradiation_flux = kwargs["irradiation_flux"]
     v_goal = kwargs["bias"]
     
-    if is_wf:
-        paras.update({"weightfield": True})
-    else:
-        paras.update({"weightfield": False})
+    configuration = kwargs.get("_field_configuration")
+    if configuration is None:
+        raise ValueError("Field execution requires a resolved configuration")
+    paras = _legacy_solver_parameters(configuration, weightfield=is_wf)
 
-    device = simname
-    region = simname
-    MyDetector = Detector(device)
-    MyDevsimMesh = DevsimMesh(MyDetector, devsim_solve_paras=paras)
+    MyDetector = Detector(simname)
+    MyDetector.dimension = int(configuration["dimension"])
+    MyDetector.temperature = float(configuration["temperature"])
+    MyDetector.voltage = float(configuration["bias_voltage"])
+    MyDetector.device_dict["default_dimension"] = MyDetector.dimension
+    MyDetector.device_dict["field_dimension"] = MyDetector.dimension
+    MyDetector.device_dict["temperature"] = MyDetector.temperature
+    MyDetector.device_dict["bias"]["voltage"] = MyDetector.voltage
+    device = MyDetector.device
+    region = MyDetector.region
+    field_directory = kwargs.get("_field_directory")
+    MyDevsimMesh = DevsimMesh(
+        MyDetector,
+        devsim_solve_paras=paras,
+        output_directory=field_directory,
+    )
     MyDevsimMesh.mesh_define()
 
-    if "frequency" in MyDetector.device_dict:
-        paras.update({"frequency": MyDetector.device_dict['frequency']})
-    if "area_factor" in MyDetector.device_dict:
-        paras.update({"area_factor": MyDetector.device_dict['area_factor']})
-    if "default_dimension" in MyDetector.device_dict:
-        default_dimension =MyDetector.device_dict["default_dimension"]
+    default_dimension = MyDetector.dimension
     if "irradiation" in MyDetector.device_dict and not is_wf:
         irradiation = True
     else:
@@ -140,9 +145,9 @@ def main (kwargs):
     else:
         solve_model = None
 
-    path = output(__file__, "default")
-    if irradiation:
-        path = output(__file__, str(irradiation_flux))
+    if field_directory is None:
+        raise ValueError("Field execution requires a configuration directory")
+    path = str(create_path(field_directory))
 
     loop=loop_section.loop_section(paras=paras,device=device,region=region,solve_model=solve_model,irradiation=irradiation,)
    
@@ -156,9 +161,6 @@ def main (kwargs):
             if not os.path.exists(folder_path):
                 os.makedirs(folder_path)
             
-            paras["milestone_step"] == 1
-            paras.update({"milestone_step":paras["milestone_step"]})
-
             loop.initial_solver(contact=contact,set_contact_type=None,impact_model=impact_model,irradiation_model=irradiation_model,irradiation_flux=irradiation_flux,)
             loop.loop_solver(circuit_contact=contact,v_trial=v_trial,area_factor=paras["area_factor"],)
 
@@ -179,10 +181,10 @@ def main (kwargs):
             v_goal = float(MyDetector.device_dict['bias']['voltage'])
         if v_goal > 0:
             milestone_step = paras['milestone_step']
-            voltage_step = 1.0 
+            voltage_step = abs(paras['voltage_step'])
         else:
             milestone_step = -1 * paras['milestone_step']
-            voltage_step = -1.0 
+            voltage_step = -abs(paras['voltage_step'])
         max_voltage_step = paras['max_voltage_step']
 
         step_too_small = False
@@ -194,7 +196,7 @@ def main (kwargs):
             if abs(v_trial) > abs(v_goal):
                 v_trial = v_goal
                 goal_flag = True
-            elif abs(v_trial) > abs(voltage_milestones[0]):
+            elif voltage_milestones and abs(v_trial) > abs(voltage_milestones[0]):
                 v_trial = voltage_milestones[0]
                 milestone_flag = True
             try:

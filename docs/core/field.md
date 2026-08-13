@@ -25,8 +25,9 @@ the corresponding directory under `field/`:
     └── <field-files>
 ```
 
-The configuration contains every input used by Physics, Mesher, Solver,
-Converter, and I/O. A change to any configuration value produces a different
+The configuration records resolved Field settings and the Device revision that
+supplies the sensor structure. Together, these values identify the inputs used
+by Physics, Mesher, Solver, Converter, and I/O. A changed value produces a new
 hash and directory.
 
 ## 🧮 Physics

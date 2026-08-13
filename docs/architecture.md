@@ -104,4 +104,4 @@ The scientific definitions are maintained in the corresponding Core pages:
 - [Frontend](core/frontend.md)
 - [Metrics](core/metrics.md)
 
-PCB, ASIC, ADC, and control remain design drafts under `docs/core/draft/`.
+PCB, ASIC, and ADC remain design drafts under `docs/core/draft/`.

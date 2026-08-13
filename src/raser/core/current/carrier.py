@@ -14,7 +14,7 @@ import random
 import numpy as np
 
 from .model import Material
-from raser.supports.math import Vector
+from .vector import Vector
 
 tolerance_default = 1e-6
 

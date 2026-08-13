@@ -6,7 +6,6 @@ from pathlib import Path
 from raser.core.device import build_device as bdv
 from raser.core.metrics import waveform_stats
 from raser.supports.output import create_path
-from raser.supports.paths import component_path
 
 
 def _load_run_record(run_root):
@@ -14,19 +13,24 @@ def _load_run_record(run_root):
         return json.load(f_in)
 
 
+def _component(record, kind):
+    matches = [item for item in record["components"] if item["kind"] == kind]
+    if len(matches) != 1:
+        raise ValueError(f"Timeres run record requires one {kind} component")
+    return matches[0]
+
+
 def _configure_detector(record):
-    detector = bdv.Detector(record["sensor"])
-    detector.voltage = float(record["voltage"])
-    if record.get("amplifier") is not None:
-        detector.amplifier = record["amplifier"]
-    if record.get("daq") is not None:
-        detector.daq = record["daq"]
+    device = record["device"]
+    detector = bdv.Detector(device["definition"])
+    detector.voltage = float(device["state"]["bias_voltage"])
+    detector.amplifier = _component(record, "AFE")["name"]
+    detector.daq = _component(record, "ADC")["name"]
     return detector
 
 
-def _thresholds(detector):
-    with open(component_path("electronics", "digital", detector.daq + ".json")) as f_in:
-        daq = json.load(f_in)
+def _thresholds(record):
+    daq = _component(record, "ADC")["values"]
     return daq["threshold"], daq["amplitude_threshold"]
 
 
@@ -34,7 +38,7 @@ def collect(run_root):
     run_root = Path(run_root)
     record = _load_run_record(run_root)
     detector = _configure_detector(record)
-    threshold, amplitude_threshold = _thresholds(detector)
+    threshold, amplitude_threshold = _thresholds(record)
     output_path = run_root / "analysis"
     create_path(output_path)
 
@@ -44,4 +48,8 @@ def collect(run_root):
         threshold,
         amplitude_threshold,
     )
+    if not statistics.data:
+        raise ValueError(
+            f"Timeres run contains no accepted waveform events: {run_root}"
+        )
     statistics.draw(output_path, record["run"])

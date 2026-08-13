@@ -10,9 +10,10 @@ from raser.supports.paths import component_path
 from raser.supports.paths import component_roots
 
 
-DEFAULT_EXPERIMENT = "charge_collection"
+DEFAULT_EXPERIMENT = "signal"
 DEFAULT_SOURCE = "decay/Sr90"
 APP_EXPERIMENTS = {
+    "signal": PACKAGE_ROOT / "apps" / "signal" / "signal.json",
     "charge_collection": PACKAGE_ROOT / "apps" / "cce" / "charge_collection.json",
     "time_resolution": PACKAGE_ROOT / "apps" / "timeres" / "time_resolution.json",
 }
@@ -61,7 +62,21 @@ def load_signal_source(name_or_path=None):
 
 
 def compose_g4_config(experiment, source):
-    g4_config = copy.deepcopy(experiment["g4"])
+    if "g4setup" in experiment:
+        g4_config = _load_json(
+            component_path("g4setup", experiment["g4setup"] + ".json")
+        )
+    elif "g4" in experiment:
+        g4_config = copy.deepcopy(experiment["g4"])
+    else:
+        g4_config = {
+            "geant4_model": "device",
+            "total_events": 1,
+            "object": {},
+            "world": "G4_Galactic",
+            "maxstep": 2,
+            "g4_vis": False,
+        }
     g4_config.update(source)
     for metadata_key in ("name", "kind", "description"):
         g4_config.pop(metadata_key, None)
@@ -75,8 +90,12 @@ def apply_signal_experiment(my_d, kwargs):
 
     my_d.g4experiment = experiment["name"]
     my_d.g4_config = g4_config
-    my_d.amplifier = kwargs.get("amplifier") or experiment.get("amplifier")
-    my_d.daq = experiment.get("daq") or my_d.daq
+    my_d.amplifier = (
+        kwargs.get("amplifier")
+        or experiment.get("afe")
+        or experiment.get("amplifier")
+    )
+    my_d.daq = experiment.get("adc") or experiment.get("daq") or my_d.daq
     my_d.signal_experiment = experiment["name"]
     my_d.signal_source = source["name"]
     my_d.signal_output_label = experiment.get("output_label", experiment["name"])

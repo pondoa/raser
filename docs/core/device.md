@@ -14,8 +14,8 @@ source, scan, or other application scenario remain with the application.
 Device is the authority for sensor identity. Its definition contains the
 information needed to decide whether two calculations use the same sensor,
 together with the defaults used during application resolution. Loading
-validates the relationships among coordinate mappings, contacts, channel
-identities, electrical quantities, and model bindings. A coherent set forms
+validates the relationships among coordinate mappings, contacts, the readout
+array, electrical quantities, and model bindings. A coherent set forms
 the runtime sensor definition; an incomplete set fails at the Device boundary.
 
 Changing a Device definition creates a new definition revision. Choosing a
@@ -138,7 +138,7 @@ geometry.
 | --- | --- |
 | [Field](field.md) | Structure, material, doping, contacts, mesh, operating conditions, and Field and Damage selections |
 | [Interaction](interaction.md) | Geant4 geometry, sensitive-volume mapping, material, and runtime domain |
-| [Carrier and current](current.md) | Runtime domain, material, temperature, contacts, channel order, and Gain and Transport selections |
+| [Carrier and current](current.md) | Runtime domain, material, temperature, contacts, readout array, and Gain and Transport selections |
 | [Frontend](frontend.md) | Sensor electrical definition, readout electrodes, and Readout selection |
 | [Metrics](metrics.md) | Device identity, geometry, pitches, and electrode count |
 
@@ -146,7 +146,7 @@ geometry.
 
 1. Define the runtime domain and detector-coordinate convention.
 2. Define the Geant4 geometry and its mapping to that domain.
-3. Declare both readout-axis counts, pitches, contacts, and channel order.
+3. Declare both readout-axis counts, pitches, and contacts.
 4. Declare `field_source`, `field_dimension`, and the Damage, Transport, Gain,
    and Readout model selections.
 5. Declare capacitance explicitly in pF.

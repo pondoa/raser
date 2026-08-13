@@ -542,7 +542,7 @@ def main():
     else:
         
         from raser.core.device import build_device as bdv
-        detector_json = component_path('detector', g4_dic['DetModule'])
+        detector_json = component_path('device', g4_dic['DetModule'])
         with open(detector_json) as q:
              det_dic = json.load(q)
 

@@ -16,7 +16,9 @@ import ROOT
 
 from raser.core.device import build_device as bdv
 from raser.supports.output import output
-from raser.supports.math import is_number, fit_data_normal, fit_data_landau
+from .fitting import fit_data_landau
+from .fitting import fit_data_normal
+from .fitting import is_number
 from raser.supports.paths import component_path
 from raser.supports.paths import project_path
 from raser.supports import runs
@@ -686,7 +688,7 @@ def main(kwargs):
     if kwargs['daq'] != None:
         my_d.daq = kwargs['daq']
    
-    daq_json = component_path("electronics", "digital", my_d.daq + ".json")
+    daq_json = component_path("adc", my_d.daq + ".json")
     with open(daq_json) as f:
         daq_dict = json.load(f)
         threshold = daq_dict['threshold']
