@@ -16,15 +16,14 @@ completion.
 | Owner | Namespace |
 | --- | --- |
 | Application workflow | `<project>/<workflow>/<run_id>/...` |
-| Direct Core developer command | `<project>/<core-subsystem>/...` |
-| CLI management action | `<project>/cli/...` |
+| Direct Core command | `<project>/<core-subsystem>/...` |
 | External caller | `<project>/<declared-owner>/...` |
 
 Labels are relative path segments confined beneath the active project.
 Absolute and parent-escaping labels fail validation.
 
 An application creates its run root and passes explicit artifact destinations
-to Core. A direct developer command may ask Core to derive a subsystem
+to Core. A direct Core command may ask Core to derive a subsystem
 namespace. Application calls supply their artifact destinations explicitly.
 
 ## ⚙️ Operations

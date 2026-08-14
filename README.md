@@ -23,21 +23,18 @@ Common workflows include:
 
 | Goal | Command |
 | --- | --- |
-| Create a project | `raser project create my-sensor --template signal` |
-| Solve an electric field | `raser field solve -cv HPK-Si-PiN` |
-| Solve a weighting field | `raser field solve -wf HPK-Si-PiN` |
+| Solve an electric field | `raser field -cv HPK-Si-PiN` |
+| Solve a weighting field | `raser field -wf HPK-Si-PiN` |
 | Generate a signal | `raser signal HPK-Si-PiN` |
 | Run a CCE study | `raser cce NJU-PiN` |
 | Run a time-resolution study | `raser timeres NJU-PiN` |
 
 Use `raser <command> --help` for the current options. Generated fields and runs
-are stored under `work/` rather than in the package source tree.
+are stored under `work/`.
 
 ## 📚 Documentation
 
-- [Documentation index](docs/README.md)
-- [Install, activate, and run](docs/getting-started.md)
-- [Architecture and data paths](docs/architecture.md)
+- [Documentation / 文档](docs/README.md)
 - [Container build routes](bootstrap/README.md)
 - [Repository working rules](AGENTS.md)
 

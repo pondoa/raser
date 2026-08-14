@@ -4,7 +4,7 @@
 
 This directory contains the SIF definitions used by cluster and isolated
 deployments. User-facing build, activation, and runtime instructions live in
-the [getting-started guide](../docs/getting-started.md).
+the [documentation index](../docs/README.md).
 
 ---
 

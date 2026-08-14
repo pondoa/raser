@@ -26,14 +26,14 @@ def _field_replacements(kwargs) -> dict:
         replacements["bias_voltage"] = kwargs["bias"]
     if kwargs.get("irradiation_flux") is not None:
         replacements["irradiation"] = {"fluence": kwargs["irradiation_flux"]}
-    if kwargs.get("field_action") == "import":
+    if kwargs.get("input") is not None:
         replacements["converter"] = {"flip": bool(kwargs.get("flip"))}
     return replacements
 
 
 def build_plan(kwargs) -> FieldPlan:
     device = resolve_device(kwargs["target"])
-    action = kwargs.get("field_action") or "solve"
+    action = "import" if kwargs.get("input") is not None else "solve"
     if action == "solve" and kwargs.get("wf"):
         action = "weight"
     replacements = _field_replacements(kwargs)
@@ -122,9 +122,6 @@ def weight(kwargs):
 
 
 def main(kwargs):
-    action = kwargs.get("field_action")
-    if action == "import":
+    if kwargs.get("input") is not None:
         return import_field(kwargs)
-    if action == "weight":
-        return weight(kwargs)
     return solve(kwargs)

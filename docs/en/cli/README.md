@@ -19,20 +19,14 @@ raser <command> --help
 | `bmos` | [`apps/bmos`](../apps/bmos.md) |
 | `cce` | [`apps/cce`](../apps/cce.md) |
 | `field` | [Core Field](../core/field.md) |
+| `frontend` | [Frontend](../core/frontend.md) |
+| `current` | [Current](../core/current.md) |
+| `metrics` | [Metrics](../core/metrics.md) |
 | `lumi` | [`apps/lumi`](../apps/lumi.md) |
-| `project` | [`cli/project.py`](project.md) |
 | `signal` | [`apps/signal`](../apps/signal.md) |
 | `tct` | [`apps/tct`](../apps/tct.md) |
 | `telescope` | [`apps/telescope`](../apps/telescope.md) |
 | `timeres` | [`apps/timeres`](../apps/timeres.md) |
-
-Direct implementation capabilities are grouped under `raser dev`:
-
-| Developer command | Core package |
-| --- | --- |
-| `frontend` | [Frontend](../core/frontend.md) |
-| `current` | [Current](../core/current.md) |
-| `metrics` | [Metrics](../core/metrics.md) |
 
 CLI help is the authoritative syntax and option reference. Unregistered
 top-level forms fail explicitly.
@@ -49,7 +43,7 @@ component lookup follow [Supports paths](../supports/paths.md).
 
 ## ⚙️ Batch boundaries
 
-Global `raser -b <command>` submits one complete command. An application's
+Global `raser -t -b <command>` submits one complete command. An application's
 indexed mode expands one recorded run into workers. These are separate parser
 and ownership boundaries; see [Jobs](../supports/jobs.md) and
 [Runs](../supports/runs.md).

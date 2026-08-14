@@ -111,7 +111,6 @@ def _add_detector_source(parser, default_source):
         "--collect", help="collect finished batch jobs", action="store_true"
     )
     parser.add_argument("--events-per-job", type=int, help="events per batch job")
-    parser.add_argument("--experiment", help="signal experiment configuration")
     parser.add_argument("-vol", "--voltage", type=float, help="bias voltage")
     parser.add_argument("-irr", "--irradiation", type=str, help="irradiation flux")
     parser.add_argument(
@@ -140,86 +139,41 @@ def _add_detector_source(parser, default_source):
     )
 
 
-def _add_field_artifacts(subparsers):
-    parser = subparsers.add_parser("field", help="field artifacts")
-    actions = parser.add_subparsers(dest="field_action", required=True)
-
-    solve = actions.add_parser("solve", help="solve electric or weighting field")
-    solve.add_argument("target", help="sensor or field target")
-    _add_verbose(solve)
-    solve.add_argument("-cv", help="CV simulation", action="store_true")
-    solve.add_argument("-wf", help="WeightField Simulation", action="store_true")
-    solve.add_argument(
+def _add_field(subparsers):
+    parser = subparsers.add_parser(
+        "field", help="calculate electric fields, weighting fields, and IV/CV"
+    )
+    parser.add_argument("target", help="Device project")
+    _add_verbose(parser)
+    parser.add_argument("-cv", help="CV simulation", action="store_true")
+    parser.add_argument("-wf", help="weighting-field simulation", action="store_true")
+    parser.add_argument(
         "-irr", "--irradiation_flux", help="irradiationm flux", type=float
     )
-    solve.add_argument("-bias", help="bias voltage", type=float)
-    solve.add_argument(
+    parser.add_argument("-bias", help="bias voltage", type=float)
+    parser.add_argument(
         "-v_current", help="Current voltage for step-by-step simulation", type=float
     )
-    solve.add_argument("-noise", help="Detector Noise simulation", action="store_true")
-    solve.add_argument("-umf", help="use umf solver", action="store_true")
-    solve.add_argument("--dry-run", action="store_true")
-    solve.set_defaults(extract=False, flip=False, wf_sub=None)
-    _entry(
-        solve,
-        ".core.field.command",
-        "solve",
-        command="field",
-        group="core",
-        prefix=("field", "solve"),
+    parser.add_argument("-noise", help="Detector Noise simulation", action="store_true")
+    parser.add_argument("-umf", help="use umf solver", action="store_true")
+    parser.add_argument(
+        "-ext",
+        "--extract",
+        dest="input",
+        metavar="TCAD_FILE",
+        help="import a TCAD field file",
     )
-
-    import_field = actions.add_parser("import", help="import a TCAD field file")
-    import_field.add_argument("target", help="Device project")
-    import_field.add_argument("input", help="TCAD .tdr field file")
-    import_field.add_argument(
+    parser.add_argument(
         "-flip", help="flip the direction of the electric field", action="store_true"
     )
-    import_field.add_argument("--dry-run", action="store_true")
-    import_field.set_defaults(
-        verbose=0,
-        umf=False,
-        extract=True,
-        wf_sub=None,
-        cv=False,
-        wf=False,
-        irradiation_flux=None,
-        bias=None,
-        v_current=None,
-        noise=False,
-    )
+    parser.add_argument("--dry-run", action="store_true")
+    parser.set_defaults(wf_sub=None)
     _entry(
-        import_field,
+        parser,
         ".core.field.command",
-        "import_field",
+        "main",
         command="field",
         group="core",
-        prefix=("field", "import"),
-    )
-
-    weight = actions.add_parser("weight", help="solve readout weighting potentials")
-    weight.add_argument("target", help="sensor or field target")
-    weight.add_argument("-bias", type=float, help="bias voltage")
-    weight.add_argument("--dry-run", action="store_true")
-    weight.set_defaults(
-        verbose=0,
-        umf=False,
-        extract=False,
-        flip=False,
-        cv=False,
-        wf=False,
-        irradiation_flux=None,
-        bias=None,
-        v_current=None,
-        noise=False,
-    )
-    _entry(
-        weight,
-        ".core.field.command",
-        "weight",
-        command="field",
-        group="core",
-        prefix=("field", "weight"),
     )
 
 
@@ -457,26 +411,9 @@ def _add_public_parsers(subparsers):
     _add_detector_source(parser_cce, None)
     _entry(parser_cce, ".apps.cce", "run", command="cce", group="app")
 
-    _add_field_artifacts(subparsers)
+    _add_field(subparsers)
 
     _add_lumi(subparsers)
-
-    parser_project = subparsers.add_parser("project", help="manage work projects")
-    project_subparsers = parser_project.add_subparsers(
-        dest="project_action", required=True
-    )
-    parser_project_create = project_subparsers.add_parser(
-        "create", help="create a work project"
-    )
-    parser_project_create.add_argument("project_name", help="project directory name")
-    parser_project_create.add_argument(
-        "--template",
-        choices=["bmos", "cce", "lumi", "signal", "tct", "telescope", "timeres"],
-        help="copy app component assets into the project",
-    )
-    _entry(
-        parser_project_create, ".cli.project", "main", command="project", group="cli"
-    )
 
     parser_signal = subparsers.add_parser("signal", help="single signal simulation")
     _add_detector_source(parser_signal, "decay/Sr90")
@@ -490,7 +427,7 @@ def _add_public_parsers(subparsers):
     _add_telescope(subparsers)
 
 
-def _add_dev_parsers(subparsers):
+def _add_core_parsers(subparsers):
     frontend = subparsers.add_parser(
         "frontend", help="Sensor and AFE circuit calculation"
     )
@@ -503,7 +440,7 @@ def _add_dev_parsers(subparsers):
         ".core.frontend",
         "trans",
         command="frontend",
-        group="dev",
+        group="core",
         args=("name",),
     )
 
@@ -514,7 +451,7 @@ def _add_dev_parsers(subparsers):
         ".core.frontend",
         "readout",
         command="frontend",
-        group="dev",
+        group="core",
         args=("name",),
     )
 
@@ -522,14 +459,19 @@ def _add_dev_parsers(subparsers):
     current_actions = current.add_subparsers(dest="current_action", required=True)
     model = current_actions.add_parser("model")
     _entry(
-        model, ".core.current.model", "main", command="current", group="dev", args=()
+        model,
+        ".core.current.model",
+        "main",
+        command="current",
+        group="core",
+        args=(),
     )
 
     metrics = subparsers.add_parser(
         "metrics", help="waveform and signal-derived metrics"
     )
     _add_metrics(metrics)
-    _entry(metrics, ".core.metrics", "main", command="metrics", group="dev")
+    _entry(metrics, ".core.metrics", "main", command="metrics", group="core")
 
 
 def build_parser():
@@ -544,22 +486,12 @@ def build_parser():
         dest="global_batch",
     )
     parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        dest="global_dry_run",
-        help="resolve a global batch command and display its plan",
+        "-t", "--test", help="test batch submission", action="store_true"
     )
 
     subparsers = parser.add_subparsers(help="sub-command help", dest="subparser_name")
     _add_public_parsers(subparsers)
-
-    parser_dev = subparsers.add_parser(
-        "dev", help="developer entry points for core modules"
-    )
-    dev_subparsers = parser_dev.add_subparsers(
-        help="core module help", dest="dev_command", required=True
-    )
-    _add_dev_parsers(dev_subparsers)
+    _add_core_parsers(subparsers)
 
     return parser
 
@@ -599,14 +531,14 @@ def main(argv=None):
             from raser.supports import batchjob
 
             batch_args = [
-                item for item in argv if item not in ("-b", "--batch", "--dry-run")
+                item for item in argv if item not in ("-b", "--batch", "-t", "--test")
             ]
             with _project_context(command, kwargs):
                 batchjob.main(
                     command,
                     batch_args,
                     batch_level,
-                    is_test=kwargs.get("global_dry_run", False),
+                    is_test=kwargs["test"],
                 )
         else:
             with _project_context(command, kwargs):

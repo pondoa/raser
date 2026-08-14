@@ -7,7 +7,7 @@ _RASER 5.0 command parsing, dispatch context, and process-exit semantics_
 ## 📋 Scope
 
 The installed `raser` entry point owns command syntax and dispatch. It converts
-an argument vector into one selected application or developer capability and
+an argument vector into one selected application or Core capability and
 keeps command-line concerns outside scientific code.
 
 | Area | CLI responsibility | Downstream responsibility |
@@ -80,7 +80,7 @@ the selected entry.
 
 ```text
 user -> CLI -> selected application -> Core
-           \-> selected developer capability
+           \-> selected Core capability
            \-> Supports
 ```
 
@@ -90,7 +90,7 @@ The dependency rules are:
 - applications receive the parsed top-level argument values
 - Python import state comes from the installed package and active environment
 - each route names one concrete module and callable
-- developer routes expose Core capabilities under the `raser dev` surface
+- Core capabilities are exposed through their corresponding top-level commands
 
 Project inference and component lookup are defined in
 [Runtime paths](../supports/paths.md). Workflow fan-out is defined in
@@ -103,7 +103,7 @@ Each terminal parser registers a complete dispatch descriptor:
 | Field | Meaning |
 | --- | --- |
 | **Command** | Stable owning command such as `signal`, `field`, or `metrics` |
-| **Group** | Application, Core project operation, developer capability, or CLI management action |
+| **Group** | Application or Core capability |
 | **Prefix** | Tokens that identify the worker command during fan-out |
 | **Module** | One importable target module |
 | **Callable** | One function on that module |

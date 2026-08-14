@@ -59,7 +59,7 @@ libraries matched to the external EL9 Geant4 installation. Optional source
 archives may be cached under `bootstrap/ingredients/`.
 
 The single-processor squashfs option avoids thread-creation failures on
-restricted cluster nodes. See the [container route notes](../bootstrap/README.md)
+restricted cluster nodes. See the [container route notes](../../bootstrap/README.md)
 for image-specific details.
 
 ### Native Apple Silicon
@@ -124,13 +124,30 @@ raser --help
 Then run a workflow through the public CLI:
 
 ```bash
-raser field solve -cv HPK-Si-PiN
+raser field -cv HPK-Si-PiN
 raser signal HPK-Si-PiN
 raser cce NJU-PiN
 ```
 
 Use `raser <command> --help` for options. The public command is `raser`;
 source-tree module paths remain implementation details.
+
+## Validate a complete sensor chain
+
+The following commands solve the Device field data and run the three primary
+sensor-response applications with fixed operating values and random seeds:
+
+```bash
+source env/setup_cvmfs.sh conda
+raser field HPK-Si-PiN -bias 200
+raser field -wf HPK-Si-PiN -bias 200
+raser signal HPK-Si-PiN decay/Sr90 -vol 200 --events-per-job 1 --seed 7
+raser tct signal HPK-Si-PiN SPA_top_Si_IR -vol 200 --seed 7
+raser timeres HPK-Si-PiN decay/Sr90 -vol 200 --events-per-job 100 --seed 7
+```
+
+Signal processes one Geant4 event. TCT calculates the laser-generated carrier
+groups. Timeres processes 100 Geant4 events and writes the timing analysis.
 
 ## 🌳 Share environments with worktrees
 

@@ -1,6 +1,6 @@
 # Repository working rules
 
-> Scope: RASER repository · Detailed setup: [docs/getting-started.md](docs/getting-started.md)
+> Scope: RASER repository · Detailed setup: [docs](docs/README.md)
 
 Keep changes small, explicit, and verifiable.
 
