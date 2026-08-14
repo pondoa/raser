@@ -1,4 +1,4 @@
-"""Time-resolution setup resolution and dry-run plan."""
+"""Charge-collection setup resolution and dry-run plan."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from raser.supports.paths import app_component_roots
 from raser.supports.paths import component_path
 
 
-CONFIG_PATH = PACKAGE_ROOT / "apps" / "timeres" / "time_resolution.json"
+CONFIG_PATH = PACKAGE_ROOT / "apps" / "cce" / "charge_collection.json"
 
 
 def load_defaults():
@@ -25,7 +25,7 @@ def _load_g4setup(selector):
     path = component_path(
         "g4setup",
         str(selector) + ".json",
-        roots=app_component_roots("timeres"),
+        roots=app_component_roots("cce"),
     )
     with path.open(encoding="utf-8") as stream:
         return path, json.load(stream)
@@ -37,18 +37,18 @@ def build_plan(kwargs) -> WorkflowPlan:
     signal_plan = build_signal_plan(
         kwargs,
         g4setup=g4setup,
-        workflow="timeres",
+        workflow="cce",
         default_source=defaults["source"],
         default_afe=defaults["afe"],
     )
     adc_path, adc = load_component("adc", kwargs.get("adc") or defaults["adc"])
     components = signal_plan.components + (component_selection("ADC", adc_path, adc),)
     return WorkflowPlan(
-        workflow="timeres",
+        workflow="cce",
         device=signal_plan.device,
         field=signal_plan.field,
         components=components,
-        stages=signal_plan.stages + ("ADC", "Metrics", "Time-resolution analysis"),
+        stages=signal_plan.stages + ("ADC", "Metrics", "Charge-collection analysis"),
         output=signal_plan.output,
         work=signal_plan.work,
     )

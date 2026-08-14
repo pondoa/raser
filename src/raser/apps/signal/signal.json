@@ -1,5 +1,4 @@
 {
-  "name": "signal",
-  "output_label": "signal",
+  "source": "decay/Sr90",
   "afe": "Broad_Band_UCSC"
 }

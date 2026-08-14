@@ -13,7 +13,6 @@ import os
 import array
 import time
 import subprocess
-import json
 import time
 
 import ROOT
@@ -26,7 +25,7 @@ from raser.core.frontend.legacy_readout import Amplifier
 from raser.core.interaction.laser import LaserInjection
 from raser.apps._planning import execution_seed
 from raser.supports.output import output, create_path
-from raser.supports.paths import component_path
+from .workflow import runtime_components
 
 def main(kwargs):
     """
@@ -50,25 +49,12 @@ def main(kwargs):
 
     det_name = kwargs['det_name']
     my_d = bdv.Detector(det_name)
+    laser_dic, amplifier = runtime_components(kwargs)
     
     if kwargs['voltage'] != None:
         voltage = kwargs['voltage']
     else:
         voltage = my_d.voltage
-
-    if kwargs['laser'] != None:
-        laser = kwargs['laser']
-        laser_json = component_path("laser", laser + ".json")
-        with open(laser_json) as f:
-            laser_dic = json.load(f)
-    else:
-        # TCT must be with laser
-        raise NameError
-
-    if kwargs['amplifier'] != None:
-        amplifier = kwargs['amplifier']
-    else:
-        amplifier = my_d.amplifier
 
     my_f = devfield.DevsimField(
         my_d.device,

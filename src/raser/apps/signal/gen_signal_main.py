@@ -23,7 +23,7 @@ from raser.core.field import devsim_field as devfield
 from raser.core.frontend.legacy_readout import Amplifier
 from raser.apps._planning import execution_seed
 from .draw_save import energy_deposition, draw_drift_path
-from .experiments import apply_signal_experiment
+from .runtime import apply_signal_plan
 from .runtime import build_current
 from .runtime import build_interaction
 
@@ -50,7 +50,7 @@ def main(kwargs):
 
     det_name = kwargs['det_name']
     my_d = bdv.Detector(det_name)
-    apply_signal_experiment(my_d, kwargs)
+    apply_signal_plan(my_d, kwargs)
     if kwargs['voltage'] is not None:
         my_d.voltage = float(kwargs['voltage'])
 

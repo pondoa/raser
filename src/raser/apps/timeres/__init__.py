@@ -3,10 +3,13 @@
 from pathlib import Path
 
 from raser.apps import signal
+from raser.apps._planning import activate_plan
 from raser.supports import jobs
 from raser.supports import runs
 
-DEFAULT_SOURCE = "decay/Sr90"
+from .workflow import build_plan
+from .workflow import load_defaults
+
 DEFAULT_FIELD = "default"
 DEFAULT_EVENTS_PER_JOB = 10000
 
@@ -14,12 +17,11 @@ DEFAULT_EVENTS_PER_JOB = 10000
 def _prepare(kwargs):
     runs.apply_run_config(kwargs)
     if kwargs.get("source") is None:
-        kwargs["source"] = DEFAULT_SOURCE
+        kwargs["source"] = load_defaults()["source"]
     if kwargs.get("field") is None:
         kwargs["field"] = DEFAULT_FIELD
     if kwargs.get("events_per_job") is None:
         kwargs["events_per_job"] = DEFAULT_EVENTS_PER_JOB
-    kwargs["experiment"] = "time_resolution"
     kwargs["workflow"] = "timeres"
     kwargs["signal_output_label"] = "timeres"
     kwargs["signal_source"] = Path(str(kwargs["source"])).stem
@@ -78,8 +80,6 @@ def _run_jobs(kwargs):
 
 def run(kwargs):
     _prepare(kwargs)
-    from .workflow import build_plan
-
     plan = build_plan(kwargs)
     if kwargs.get("dry_run"):
         plan.show()
@@ -87,8 +87,6 @@ def run(kwargs):
     if kwargs.get("collect"):
         collect(kwargs)
         return
-    from raser.apps._planning import activate_plan
-
     activate_plan(plan, kwargs)
     if _run_jobs(kwargs):
         collect(kwargs)

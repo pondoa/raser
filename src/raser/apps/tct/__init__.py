@@ -5,23 +5,14 @@ Description:  tct/__init__.py
 @version    : 2.0
 """
 
-import json
-
 from raser.supports import jobs
 from raser.supports import runs
-from raser.supports.paths import PACKAGE_ROOT
 
-
-DEFAULT_CONFIG = PACKAGE_ROOT / "apps" / "tct" / "transient_current.json"
-
-
-def _load_config():
-    with open(DEFAULT_CONFIG) as f:
-        return json.load(f)
+from .workflow import load_defaults
 
 
 def _apply_defaults(kwargs):
-    config = _load_config()
+    config = load_defaults()
     kwargs["amplifier"] = kwargs.get("amplifier") or config.get("amplifier")
     if kwargs["amplifier"] is None:
         raise ValueError("TCT app config is missing required setting: amplifier")

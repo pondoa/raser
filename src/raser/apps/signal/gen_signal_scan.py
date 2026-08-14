@@ -28,7 +28,7 @@ from raser.core.metrics import waveform_stats
 from raser.supports.output import create_path
 from raser.supports.paths import component_path
 from raser.supports.paths import optional_component_path
-from .experiments import apply_signal_experiment
+from .runtime import apply_signal_plan
 from .draw_save import draw_drift_path
 from .runtime import build_current, build_interaction, is_toy_mip_source
 
@@ -458,7 +458,7 @@ def batch_loop(
 def main(kwargs):
     det_name = kwargs['det_name']
     my_d = bdv.Detector(det_name)
-    apply_signal_experiment(my_d, kwargs)
+    apply_signal_plan(my_d, kwargs)
     if kwargs['voltage'] is not None:
         my_d.voltage = float(kwargs['voltage'])
 

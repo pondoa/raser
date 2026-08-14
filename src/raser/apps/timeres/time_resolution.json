@@ -1,6 +1,5 @@
 {
-  "name": "time_resolution",
-  "output_label": "timeres",
+  "source": "decay/Sr90",
   "afe": "Broad_Band_UCSC",
   "adc": "Alibava",
   "g4setup": "time_resolution"
