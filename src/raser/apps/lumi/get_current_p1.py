@@ -19,7 +19,7 @@ def main(output_path):
     with open(geant4_json) as f:
          g4_dic = json.load(f)
 
-    detector_json = component_path('detector', g4_dic['DetModule'])
+    detector_json = component_path('device', g4_dic['DetModule'])
     with open(detector_json) as q:
          det_dic = json.load(q)
 

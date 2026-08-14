@@ -12,6 +12,7 @@ ROOT.gROOT.SetBatch(True)
 import numpy as np
 
 from raser.core.device.build_device import Detector
+from raser.core.interaction.laser_physics import tpa_carrier_density
 
 class LaserInjection:
     """
@@ -46,6 +47,7 @@ class LaserInjection:
         self.wavelength = laser_dic["wavelength"]*1e-3 #um
         self.temporal_FWHM = laser_dic["temporal_FWHM"]
         self.pulse_energy = laser_dic["pulse_energy"]
+        # TODO: Rename spacial_FWHM to spatial_FWHM and fix l_Rayleigh handling.
         self.spacial_FWHM = laser_dic["spacial_FWHM"]#um
         self.central_time = laser_dic["central_time"]
         if "l_Reyleigh" not in laser_dic:
@@ -197,7 +199,12 @@ class LaserInjection:
             return ( self.alpha * self.wavelength * 1e-6 * intensity * np.exp(-self.alpha * (h + depth) * 1e-6) / (h_Planck * speedofLight)
             )
         elif self.tech == "TPA":
-            return ( self.beta_2 * self.wavelength * 1e-6 * intensity ** 2 / (2 * h_Planck * speedofLight))
+            return tpa_carrier_density(
+                beta_2=self.beta_2,
+                wavelength_um=self.wavelength,
+                pulse_fluence_W_s_per_m2=intensity,
+                temporal_fwhm_s=self.temporal_FWHM,
+            )
         
     def timePulse(self, t):
         # to reduce run time, convolute the time pulse function with the signal after the signal is calculated

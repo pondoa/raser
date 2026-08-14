@@ -6,9 +6,11 @@ import json
 import re
 import subprocess
 import time
+from datetime import datetime
+from datetime import timezone
 from pathlib import Path
+from typing import Any, Mapping
 
-from raser.supports.output import create_path
 from raser.supports.paths import project_path
 
 
@@ -33,8 +35,32 @@ def apply_run_config(kwargs):
     return config
 
 
+def resolve_configuration(
+    *,
+    application: Mapping[str, Any] | None = None,
+    reusable_defaults: Mapping[str, Any] | None = None,
+    component: Mapping[str, Any] | None = None,
+    run_config: Mapping[str, Any] | None = None,
+    invocation: Mapping[str, Any] | None = None,
+):
+    """Resolve values from broad defaults to one invocation."""
+    resolved = {}
+    for layer in (
+        application,
+        reusable_defaults,
+        component,
+        run_config,
+        invocation,
+    ):
+        if layer:
+            resolved.update(
+                {key: value for key, value in layer.items() if value is not None}
+            )
+    return resolved
+
+
 def new_run_id():
-    return time.strftime("%Y_%m%d_%H%M%S")
+    return time.strftime("%Y_%m%d_%H%M%S") + f"_{time.time_ns() % 1_000_000:06d}"
 
 
 def ensure_run_id(kwargs):
@@ -68,22 +94,64 @@ def run_path(workflow, run_id):
     )
 
 
+def write_run_record(
+    specification: Mapping[str, Any],
+    *,
+    workflow: str,
+    run_id: str | None = None,
+) -> tuple[Path, dict[str, Any]]:
+    if not workflow or _slug(workflow) != workflow:
+        raise ValueError(f"Invalid workflow name: {workflow}")
+    allocated_id = run_id or new_run_id()
+    if allocated_id == "latest" or _slug(allocated_id) != allocated_id:
+        raise ValueError(f"Invalid persisted run ID: {allocated_id}")
+
+    record = dict(specification)
+    record.update(
+        {
+            "workflow": workflow,
+            "run": allocated_id,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "git": git_metadata(),
+        }
+    )
+    payload = json.dumps(record, indent=2, sort_keys=True) + "\n"
+
+    root = run_path(workflow, allocated_id)
+    root.mkdir(parents=True, exist_ok=False)
+    (root / "batch").mkdir()
+    record_path = root / "run.json"
+    record_path.write_text(payload, encoding="utf-8")
+    return root, record
+
+
 def latest_run_path(workflow, source=None, voltage=None, field=None):
     base = project_path(workflow)
     candidates = []
     for run_json in base.glob("**/run.json"):
         with open(run_json) as file:
             record = json.load(file)
-        if source is not None and source_name(record.get("source")) != source_name(source):
+        if source is not None and source_name(record.get("source")) != source_name(
+            source
+        ):
             continue
         if voltage is not None and float(record.get("voltage")) != float(voltage):
             continue
         if field is not None and record.get("field") != field:
             continue
-        candidates.append(run_json.parent)
+        try:
+            created_at = datetime.fromisoformat(record["created_at"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"Run record has invalid created_at: {run_json}") from exc
+        candidates.append((created_at, run_json.parent))
     if not candidates:
         raise FileNotFoundError(f"No runs found under {base}")
-    return sorted(candidates)[-1]
+    candidates.sort(key=lambda item: item[0])
+    latest_time = candidates[-1][0]
+    latest = [path for created_at, path in candidates if created_at == latest_time]
+    if len(latest) != 1:
+        raise ValueError(f"Latest run selection is ambiguous under {base}")
+    return latest[0]
 
 
 def git_metadata():
@@ -116,27 +184,22 @@ def prepare_run_record(kwargs, detector):
     run_id = ensure_run_id(kwargs)
     field_source = resolve_field_source(kwargs, detector)
 
-    root = run_path(workflow, run_id)
-    batch = root / "batch"
-    create_path(batch)
     record = {
-        "workflow": workflow,
         "sensor": detector.det_name,
         "source": source,
         "field": field_set,
         "field_set": field_set,
         "field_source": field_source,
         "voltage": float(voltage),
-        "events_per_job": int(kwargs.get("events_per_job") or config.get("events_per_job", 0) or 0),
+        "events_per_job": int(
+            kwargs.get("events_per_job") or config.get("events_per_job", 0) or 0
+        ),
         "jobs": kwargs.get("scan"),
         "amplifier": getattr(detector, "amplifier", None),
         "daq": getattr(detector, "daq", None),
-        "run": run_id,
-        "git": git_metadata(),
     }
-    with open(root / "run.json", "w") as file:
-        json.dump(record, file, indent=2, sort_keys=True)
-        file.write("\n")
+    root, record = write_run_record(record, workflow=workflow, run_id=run_id)
+    batch = root / "batch"
     kwargs["_run_path"] = str(root)
     kwargs["_run_batch_path"] = str(batch)
     kwargs["_field_set"] = field_set

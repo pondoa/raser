@@ -12,13 +12,14 @@ import os
 import logging
 import math
 import re
+from pathlib import Path
 
 import ROOT
 from .assets import resolve_field_pickle
-from raser.supports.math import calculate_gradient
-from raser.supports.math import get_common_interpolate_1d
-from raser.supports.math import get_common_interpolate_2d
-from raser.supports.math import get_common_interpolate_3d
+from .interpolation import calculate_gradient
+from .interpolation import interpolate_1d
+from .interpolation import interpolate_2d
+from .interpolation import interpolate_3d
 from raser.supports.paths import project_path
 ROOT.gROOT.SetBatch(True)
 
@@ -34,13 +35,15 @@ resolution_default_3d = {'z': 0.5, 'x': 1, 'y': 1}
 
 class DevsimField:
     def __init__(self, device_name, dimension, voltage, read_out_contact, mesher, is_plugin=False, irradiation_flux=0, 
-                 bounds=None, resolution=None, field_set="default",):
+                 bounds=None, resolution=None, field_set="default", field_directory=None,
+                 interpolation_bins=None):
         self.name = device_name
         self.voltage = voltage
         self.dimension = dimension
         self.read_out_contact = read_out_contact
         self.is_plugin = is_plugin  # 保存插件标志
         self.mesher = mesher  # 保存mesher标志
+        self.interpolation_bins = interpolation_bins
 
         # 初始化缓存相关属性
         if self.dimension == 1:
@@ -86,7 +89,12 @@ class DevsimField:
             'trap_e_hits': 0, 'trap_e_misses': 0,
         }
 
-        path = str(project_path("field", field_set)) + os.sep
+        explicit_directory = field_directory is not None
+        path = str(
+            Path(field_directory)
+            if explicit_directory
+            else project_path("field", field_set)
+        ) + os.sep
 
         # Weighting Potential is universal for all irradiation flux
         # TODO: Net Doping should be here too
@@ -94,7 +102,8 @@ class DevsimField:
         for contact in read_out_contact:
             WeightingPotentialFiles.append(path + "weightingfield/{}/Potential_{}V.pkl".format(contact['name'], 1))
 
-        if irradiation_flux != 0 and field_set == "default":
+        # TODO: Select assets only through an explicit field set.
+        if irradiation_flux != 0 and field_set == "default" and not explicit_directory:
             path = str(project_path("field", str(irradiation_flux))) + os.sep
 
         DopingFile = None
@@ -131,11 +140,13 @@ class DevsimField:
             return
         
         if DopingNotUniform['metadata']['dimension'] == 1:
-            DopingUniform = get_common_interpolate_1d(DopingNotUniform)
+            DopingUniform = interpolate_1d(DopingNotUniform)
         elif DopingNotUniform['metadata']['dimension'] == 2:
-            DopingUniform = get_common_interpolate_2d(DopingNotUniform)
+            DopingUniform = interpolate_2d(DopingNotUniform)
         elif DopingNotUniform['metadata']['dimension'] == 3:
-            DopingUniform = get_common_interpolate_3d(DopingNotUniform)
+            DopingUniform = interpolate_3d(
+                DopingNotUniform, bins=self.interpolation_bins
+            )
 
         self.Doping = DopingUniform
 
@@ -153,11 +164,13 @@ class DevsimField:
             return
         
         if PotentialNotUniform['metadata']['dimension'] == 1:
-            PotentialUniform = get_common_interpolate_1d(PotentialNotUniform)
+            PotentialUniform = interpolate_1d(PotentialNotUniform)
         elif PotentialNotUniform['metadata']['dimension'] == 2:
-            PotentialUniform = get_common_interpolate_2d(PotentialNotUniform)
+            PotentialUniform = interpolate_2d(PotentialNotUniform)
         elif PotentialNotUniform['metadata']['dimension'] == 3:
-            PotentialUniform = get_common_interpolate_3d(PotentialNotUniform)
+            PotentialUniform = interpolate_3d(
+                PotentialNotUniform, bins=self.interpolation_bins
+            )
 
         self.Potential = PotentialUniform
 
@@ -181,11 +194,13 @@ class DevsimField:
                 return
             
             if WeightingPotentialNotUniform['metadata']['dimension'] == 1:
-                WeightingPotentialUniform = get_common_interpolate_1d(WeightingPotentialNotUniform)
+                WeightingPotentialUniform = interpolate_1d(WeightingPotentialNotUniform)
             elif WeightingPotentialNotUniform['metadata']['dimension'] == 2:
-                WeightingPotentialUniform = get_common_interpolate_2d(WeightingPotentialNotUniform)
+                WeightingPotentialUniform = interpolate_2d(WeightingPotentialNotUniform)
             elif WeightingPotentialNotUniform['metadata']['dimension'] == 3:
-                WeightingPotentialUniform = get_common_interpolate_3d(WeightingPotentialNotUniform)
+                WeightingPotentialUniform = interpolate_3d(
+                    WeightingPotentialNotUniform, bins=self.interpolation_bins
+                )
 
             self.WeightingPotential.append(WeightingPotentialUniform)
     
@@ -203,11 +218,13 @@ class DevsimField:
             return
         
         if TrappingRate_pNotUniform['metadata']['dimension'] == 1:
-            TrappingRate_pUniform = get_common_interpolate_1d(TrappingRate_pNotUniform)
+            TrappingRate_pUniform = interpolate_1d(TrappingRate_pNotUniform)
         elif TrappingRate_pNotUniform['metadata']['dimension'] == 2:
-            TrappingRate_pUniform = get_common_interpolate_2d(TrappingRate_pNotUniform)
+            TrappingRate_pUniform = interpolate_2d(TrappingRate_pNotUniform)
         elif TrappingRate_pNotUniform['metadata']['dimension'] == 3:
-            TrappingRate_pUniform = get_common_interpolate_3d(TrappingRate_pNotUniform)
+            TrappingRate_pUniform = interpolate_3d(
+                TrappingRate_pNotUniform, bins=self.interpolation_bins
+            )
 
         self.TrappingRate_p = TrappingRate_pUniform
     
@@ -225,11 +242,13 @@ class DevsimField:
             return
         
         if TrappingRate_nNotUniform['metadata']['dimension'] == 1:
-            TrappingRate_nUniform = get_common_interpolate_1d(TrappingRate_nNotUniform)
+            TrappingRate_nUniform = interpolate_1d(TrappingRate_nNotUniform)
         elif TrappingRate_nNotUniform['metadata']['dimension'] == 2:
-            TrappingRate_nUniform = get_common_interpolate_2d(TrappingRate_nNotUniform)
+            TrappingRate_nUniform = interpolate_2d(TrappingRate_nNotUniform)
         elif TrappingRate_nNotUniform['metadata']['dimension'] == 3:
-            TrappingRate_nUniform = get_common_interpolate_3d(TrappingRate_nNotUniform)
+            TrappingRate_nUniform = interpolate_3d(
+                TrappingRate_nNotUniform, bins=self.interpolation_bins
+            )
 
         self.TrappingRate_n = TrappingRate_nUniform
         
@@ -282,32 +301,32 @@ class DevsimField:
         x, y, z = x / 1e4, y / 1e4, z / 1e4  # um to cm
 
         if self.dimension == 1:
-            nabla_U = calculate_gradient(self.Potential, ['z'], [z])
+            nabla_U = calculate_gradient(self.Potential, [z])
             E_z = -1 * nabla_U[0]
             return (0, 0, E_z)
 
         elif self.dimension == 2:
             if self.is_plugin:
                 # 2D插件使用x,y坐标
-                nabla_U = calculate_gradient(self.Potential, ['x', 'y'], [x, y])
+                nabla_U = calculate_gradient(self.Potential, [x, y])
                 E_x = -1 * nabla_U[0]
                 E_y = -1 * nabla_U[1]
                 return (E_x, E_y, 0)
             else:
-                nabla_U = calculate_gradient(self.Potential, ['z', 'x'], [z, x])
+                nabla_U = calculate_gradient(self.Potential, [z, x])
                 E_z = -1 * nabla_U[0]
                 E_x = -1 * nabla_U[1]
                 return (E_x, 0, E_z)
 
         elif self.dimension == 3:
             if self.mesher == "sde": # SDE使用x,y,z坐标
-                nabla_U = calculate_gradient(self.Potential, ['x', 'y', 'z'], [x, y, z])
+                nabla_U = calculate_gradient(self.Potential, [x, y, z])
                 E_x = -1 * nabla_U[0]
                 E_y = -1 * nabla_U[1]
                 E_z = -1 * nabla_U[2]
                 return (E_x, E_y, E_z)
             else:
-                nabla_U = calculate_gradient(self.Potential, ['z', 'x', 'y'], [z, x, y])
+                nabla_U = calculate_gradient(self.Potential, [z, x, y])
                 E_z = -1 * nabla_U[0]
                 E_x = -1 * nabla_U[1]
                 E_y = -1 * nabla_U[2]
@@ -409,6 +428,7 @@ class DevsimField:
             logger.warning(f"failed when getting field cache ({x:.1f}, {y:.1f}, {z:.1f}): {e}")
             return self._get_e_field(x, y, z) # 出错时不使用缓存，直接计算电场值，继承报错
     
+    # TODO: Propagate invalid field data instead of returning physical zero values.
     def get_doping_cached(self, x, y, z):
         try:
             if not self._is_position_valid(x, y, z):
@@ -443,7 +463,9 @@ class DevsimField:
                 return w_p
         except Exception as e:
             logger.warning(f"failed when getting w_p cache ({x:.1f}, {y:.1f}, {z:.1f}, {n}): {e}")
-            return None
+            raise RuntimeError(
+                f"failed when getting w_p cache ({x:.1f}, {y:.1f}, {z:.1f}, {n})"
+            ) from e
     
     def get_trap_h_cached(self, x, y, z):
         """获取空穴陷阱率 - 带缓存"""

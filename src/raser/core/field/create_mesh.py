@@ -5,22 +5,37 @@
 """
 
 import os
+from pathlib import Path
 
 import devsim
 import matplotlib.pyplot as plt
 
 from ..device.build_device import Detector
+from raser.supports.output import create_path
 from raser.supports.output import output
 from . import model_create
 
+
+def _resolve_mesh_file(mesh_file, definition_path):
+    path = Path(mesh_file).expanduser()
+    if not path.is_absolute():
+        path = Path(definition_path).parent / path
+    path = path.resolve()
+    if not path.is_file():
+        raise FileNotFoundError(f"Cannot find Device mesh: {path}")
+    return path
+
+
 class DevsimMesh:
-    def __init__(self, my_d: Detector, devsim_solve_paras):  
+    def __init__(self, my_d: Detector, devsim_solve_paras, output_directory=None):
         self.device_dict = my_d.device_dict
         self.det_name = my_d.det_name
         self.dimension = my_d.dimension
         self.device = my_d.device
         self.region = my_d.region
         self.solve_paras = devsim_solve_paras
+        self.output_directory = output_directory
+        self.definition_path = my_d.definition_path
 
     def mesh_define(self):
         if self.dimension == 1:
@@ -36,7 +51,10 @@ class DevsimMesh:
             raise ValueError(self.dimension)
 
         self.setDoping()
-        path = output(__file__, "default")
+        if self.output_directory is None:
+            path = output(__file__, "default")
+        else:
+            path = str(create_path(Path(self.output_directory)))
         if ( self.solve_paras["weightfield"] == True or self.solve_paras["ac-weightfield"] == True
         ):
             pass
@@ -96,7 +114,8 @@ class DevsimMesh:
     def createGmshMesh(self):
         mesh_name = self.device
         mesh = self.device_dict["mesh"]["gmsh_mesh"]
-        devsim.create_gmsh_mesh (mesh=mesh_name, file=mesh['file'])
+        mesh_file = _resolve_mesh_file(mesh["file"], self.definition_path)
+        devsim.create_gmsh_mesh (mesh=mesh_name, file=str(mesh_file))
         if self.solve_paras["weightfield"] == True :
             for region in mesh["region"]:
                 region["material"] = "gas"

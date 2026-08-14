@@ -1,28 +1,28 @@
-'''
+"""
 Description:  signal/__init__.py
 @Date       : 2025
 @Author     : Xin Shi, Chenxi Fu, Jian Feng
 @version    : 2.0
-'''
+"""
 
 from raser.supports import jobs
 from raser.supports import runs
 
 
 def _command_tail(kwargs):
-    command_prefix = list(kwargs['_entry_command_prefix'])
+    command_prefix = list(kwargs["_entry_command_prefix"])
     return jobs.command_tail(
-        kwargs['_argv'],
+        kwargs["_argv"],
         command_prefix,
         {"-s", "--scan", "--job", "--run"},
     )
 
 
 def _run_scan(kwargs):
-    scan_number = kwargs['scan']
-    mem = kwargs['mem']
-    use_cluster = kwargs['signal_batch']
-    command_prefix = list(kwargs['_entry_command_prefix'])
+    scan_number = kwargs["scan"]
+    mem = kwargs["mem"]
+    use_cluster = kwargs["signal_batch"]
+    command_prefix = list(kwargs["_entry_command_prefix"])
     command_tail_list = _command_tail(kwargs)
     run_id = runs.ensure_run_id(kwargs)
     command_tail_list.extend(["--run", run_id])
@@ -49,14 +49,29 @@ def _run_signal_samples(kwargs):
 
 def run_signal(kwargs):
     runs.apply_run_config(kwargs)
-    if kwargs['scan'] is not None:
+    from .workflow import build_plan
+
+    plan = kwargs.get("_workflow_plan") or build_plan(
+        kwargs,
+        workflow=kwargs.get("workflow") or "signal",
+    )
+    if kwargs.get("dry_run"):
+        plan.show()
+        return plan
+    from raser.apps._planning import activate_plan
+
+    if kwargs.get("_run_path") is None:
+        activate_plan(plan, kwargs)
+    if kwargs["scan"] is not None:
         if kwargs.get("_command") == "signal" and not kwargs["signal_batch"]:
             _run_signal_samples(kwargs)
         else:
             _run_scan(kwargs)
-    elif kwargs['job'] is not None:
+    elif kwargs["job"] is not None:
         from . import gen_signal_scan
+
         gen_signal_scan.main(kwargs)
     else:
         from . import gen_signal_main
+
         gen_signal_main.main(kwargs)

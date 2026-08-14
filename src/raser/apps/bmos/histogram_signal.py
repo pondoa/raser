@@ -22,7 +22,7 @@ import numpy
 from raser.core.device import build_device as bdv
 from raser.core.field import devsim_field as devfield
 from raser.core.current import cal_current as ccrt
-from raser.core.analog.set_pwl_input import set_pwl_input as pwlin
+from raser.core.frontend.set_pwl_input import set_pwl_input as pwlin
 from raser.supports.output import output
 from raser.supports.paths import app_file_path
 from raser.supports.paths import component_path
@@ -41,7 +41,7 @@ def get_signal():
     with open(geant4_json) as f:
          g4_dic = json.load(f)
 
-    detector_json = component_path("detector")
+    detector_json = component_path("device")
     with open(os.path.join(detector_json , g4_dic['DetModule'])) as q:
          det_dic = json.load(q)
 

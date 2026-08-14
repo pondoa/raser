@@ -1,12 +1,17 @@
-"""Reusable field calculation entry points."""
+"""Field physics, meshing, solving, conversion, and data I/O."""
 
-from . import solver_section
-from . import weighting_potential
+from .configuration import FieldConfiguration
+from .configuration import FieldPlan
+from .configuration import plan_field
+from .io import FieldData
+from .io import read_field_data
+from .io import write_field_data
 
-
-def main(kwargs):
-    solver_section.main(kwargs)
-
-
-def derive_weight(voltage, electrode, target):
-    weighting_potential.main(voltage, electrode, target)
+__all__ = [
+    "FieldConfiguration",
+    "FieldData",
+    "FieldPlan",
+    "plan_field",
+    "read_field_data",
+    "write_field_data",
+]

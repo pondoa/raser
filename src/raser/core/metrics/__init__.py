@@ -1,12 +1,12 @@
-"""Waveform and signal-derived metrics."""
+"""Waveform and readout metrics."""
+
+from .waveform import WaveformMeasurements
+from .waveform import measure_waveform
+
+__all__ = ["WaveformMeasurements", "measure_waveform"]
 
 
 def main(kwargs):
-    if kwargs["det_name"] == "HPK-Si-LGAD-CCE":
-        from . import charge_distribution
+    from . import waveform_stats
 
-        charge_distribution.main()
-    else:
-        from . import waveform_stats
-
-        waveform_stats.main(kwargs)
+    waveform_stats.main(kwargs)

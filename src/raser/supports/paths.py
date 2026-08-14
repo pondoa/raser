@@ -140,8 +140,10 @@ def component_file_path(
 ):
     if _is_path_input(name_or_path):
         path = Path(name_or_path).expanduser()
-        if path.exists():
+        if path.is_file():
             return path
+        if path.exists():
+            raise IsADirectoryError(f"RASER {kind} input must be a file: {path}")
         raise FileNotFoundError(f"Cannot find RASER {kind} file: {path}")
     return component_path(kind, str(name_or_path) + suffix)
 

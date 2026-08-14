@@ -1,1 +1,0 @@
-"""Digital electronics core package."""

@@ -12,7 +12,7 @@ if [ -z "${CONDA_PREFIX:-}" ]; then
 fi
 
 version=${NGSPICE_VERSION:-46}
-url=${NGSPICE_URL:-"https://downloads.sourceforge.net/project/ngspice/ng-spice-rework/${version}/ngspice-${version}.tar.gz"}
+url=${NGSPICE_URL:-"https://downloads.sourceforge.net/project/ngspice/ng-spice-rework/old-releases/${version}/ngspice-${version}.tar.gz"}
 expected_sha256=${NGSPICE_SHA256:-"a0d1699af1940b06649276dcd6ff5a566c8c0cad01b2f7b5e99dedbb4d64c19b"}
 
 if [ "$version" != "46" ] && [ -z "${NGSPICE_SHA256:-}" ]; then

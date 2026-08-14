@@ -22,8 +22,18 @@ case "$raser_route" in
         export RASER_GEANT4_DATA=${RASER_GEANT4_DATA:-/cvmfs/geant4.cern.ch/share/data}
         export RASER_GEANT4_DEP_PREFIX=${RASER_GEANT4_DEP_PREFIX:-/cvmfs/sft.cern.ch/lcg/views/LCG_106a_geant4ext20241128/x86_64-el9-gcc11-opt}
         export RASER_CLHEP_PREFIX=${RASER_CLHEP_PREFIX:-/cvmfs/sft.cern.ch/lcg/releases/clhep/2.4.7.1-b7a7d/x86_64-el9-gcc11-opt}
-        . "$raser_conda_setup"
-        if [ -z "${CONDA_PREFIX:-}" ] && [ -d "$dir_raser/.conda/envs/raser" ]; then
+        raser_conda_ready=
+        if [ -f "$raser_conda_setup" ]; then
+            . "$raser_conda_setup"
+            raser_conda_ready=1
+        elif command -v conda >/dev/null 2>&1; then
+            raser_conda_base=$(conda info --base 2>/dev/null)
+            if [ -n "$raser_conda_base" ] && [ -f "$raser_conda_base/etc/profile.d/conda.sh" ]; then
+                . "$raser_conda_base/etc/profile.d/conda.sh"
+                raser_conda_ready=1
+            fi
+        fi
+        if [ -n "$raser_conda_ready" ] && [ -z "${CONDA_PREFIX:-}" ] && [ -d "$dir_raser/.conda/envs/raser" ]; then
             conda activate "$dir_raser/.conda/envs/raser"
         fi
         ;;

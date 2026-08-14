@@ -14,7 +14,8 @@ import random
 import numpy as np
 
 from .model import Material
-from raser.supports.math import Vector
+from .vector import Vector
+from raser.core.field.simple import AnalyticStripPixelField
 
 tolerance_default = 1e-6
 
@@ -66,7 +67,8 @@ class VectorizedCarrierSystem:
             'boundary_checks': 0,
             'carriers_terminated': 0,
             'low_field_terminations': 0,
-            'boundary_terminations': 0
+            'boundary_terminations': 0,
+            'collection_terminations': 0
         }
         
         # 信号存储
@@ -93,6 +95,9 @@ class VectorizedCarrierSystem:
                 params['max_drift_time'] = 100e-9   # 增加最大漂移时间
                 params['min_field_strength'] = self._resolve_min_field_strength(my_d)
                 params['max_vector_steps'] = self._get_param(my_d, 'vector_max_steps', 200000, param_type=int)
+                params["collection_weighting_epsilon"] = (
+                    self._resolve_collection_weighting_epsilon(my_d)
+                )
                 
                 logger.info("探测器参数提取成功")
                 
@@ -247,6 +252,19 @@ class VectorizedCarrierSystem:
             logger.info("使用用户配置的最小电场强度: %.2f V/cm", custom_min_field)
             return custom_min_field
         return 1.0
+
+    def _resolve_collection_weighting_epsilon(self, my_d):
+        value = getattr(my_d, "vector_collection_weighting_epsilon", None)
+        if value is None and hasattr(my_d, "device_dict"):
+            value = my_d.device_dict.get("vector_collection_weighting_epsilon")
+        if value is None:
+            return 5e-3
+        value = float(value)
+        if not 0 < value < 0.5:
+            raise ValueError(
+                "vector_collection_weighting_epsilon must be between 0 and 0.5"
+            )
+        return value
     
     def _calculate_reduced_coords(self, x, y, my_d):
         """计算简化坐标"""
@@ -271,6 +289,14 @@ class VectorizedCarrierSystem:
         y_reduced = (y - my_d.l_y/2 + (my_d.y_ele_num%2)*my_d.p_y/2.0) % my_d.p_y + my_d.field_shift_y
         
         return x_reduced, y_reduced
+
+    def _should_terminate_at_contact(self, my_f, x_reduced, y_reduced, z):
+        if not self.read_out_contact or len(self.read_out_contact) != 1:
+            return False
+        potential = my_f.get_w_p_cached(x_reduced, y_reduced, z, 0)
+        if potential is None:
+            raise RuntimeError("Weighting potential is required for contact collection")
+        return potential >= 1.0 - self._params["collection_weighting_epsilon"]
     
     def _calculate_electrode_numbers(self, x, y, my_d):
         """计算电极编号"""
@@ -393,7 +419,7 @@ class VectorizedCarrierSystem:
             
             # 时间检查
             #if self.times[idx] > params['max_drift_time']:
-            if self.times[idx] > params['max_vector_steps']:
+            if self.steps_drifted[idx] >= params['max_vector_steps']:
                 self.active[idx] = False
                 self.end_conditions[idx] = 4
                 n_terminated += 1
@@ -440,9 +466,55 @@ class VectorizedCarrierSystem:
             
             # 更新位置
             self._update_carrier_position(idx, delta_x, delta_y, delta_z, dif_x, dif_y, dif_z)
+
+            new_x_reduced, new_y_reduced = self.reduced_positions[idx]
+            new_z = self.positions[idx][2]
+            if self._check_boundary_conditions(
+                self.positions[idx][0], self.positions[idx][1], new_z, my_d
+            ):
+                self._clamp_position_to_device(idx, my_d)
+                new_x_reduced, new_y_reduced = self.reduced_positions[idx]
+                new_z = self.positions[idx][2]
+                if self._should_terminate_at_contact(
+                    my_f, new_x_reduced, new_y_reduced, new_z
+                ):
+                    self.end_conditions[idx] = 5
+                    self.performance_stats["collection_terminations"] += 1
+                else:
+                    self.end_conditions[idx] = 1
+                    self.performance_stats["boundary_terminations"] += 1
+                self.active[idx] = False
+                n_terminated += 1
+                continue
+            if self._should_terminate_at_contact(
+                my_f, new_x_reduced, new_y_reduced, new_z
+            ):
+                self.active[idx] = False
+                self.end_conditions[idx] = 5
+                self.performance_stats["collection_terminations"] += 1
+                n_terminated += 1
         
         self.performance_stats['carriers_terminated'] += n_terminated
         return n_terminated
+
+    def _clamp_position_to_device(self, idx, my_d):
+        x, y, z = self.positions[idx]
+        x = min(max(x, 0.0), my_d.l_x)
+        y = min(max(y, 0.0), my_d.l_y)
+        z = min(max(z, 0.0), my_d.l_z)
+        self.positions[idx] = [x, y, z]
+        self.reduced_positions[idx] = self._calculate_reduced_coords(x, y, my_d)
+        if self.keep_drift_paths:
+            self.paths[idx][-1] = [x, y, z, self.times[idx]]
+        x_num, y_num = self._calculate_electrode_numbers(x, y, my_d)
+        self.paths_reduced[idx][-1] = [
+            self.reduced_positions[idx][0],
+            self.reduced_positions[idx][1],
+            z,
+            self.times[idx],
+            x_num,
+            y_num,
+        ]
 
     def _get_e_field_reduced(self, my_f, x, y, z, idx, field_x=None, field_y=None):
         """安全的电场获取"""
@@ -541,6 +613,7 @@ class VectorizedCarrierSystem:
             'field_error': np.sum(self.end_conditions == 2),
             'low_field': np.sum(self.end_conditions == 3),
             'timeout': np.sum(self.end_conditions == 4),
+            'collection': np.sum(self.end_conditions == 5),
             'active': n_active
         }
         
@@ -610,7 +683,7 @@ class VectorizedCarrierSystem:
         
         # 统计信号计算结果
         total_carriers_with_signals = sum(1 for carrier_signals in self.signals if carrier_signals)
-        total_signal_points = sum(len(electrode_signals) for carrier_signals in self.signals for electrode_signals in carrier_signals)
+        total_signal_points = self._count_signal_points(self.signals)
         
         logger.info(f"信号计算完成: {total_carriers_with_signals}个载流子有信号, 总信号点数={total_signal_points}")
         
@@ -619,6 +692,11 @@ class VectorizedCarrierSystem:
         
         end_time = time.time()
         logger.info(f"批量信号计算完成: 耗时{end_time - start_time:.2f}秒")
+
+    def _count_signal_points(self, values):
+        if isinstance(values, (list, tuple)):
+            return sum(self._count_signal_points(value) for value in values)
+        return 1
 
     def _calculate_signal_single_contact(self, all_indices, my_f, e0, delta_t, has_irradiation, my_d):
         """单电极情况下的信号计算"""
@@ -673,32 +751,48 @@ class VectorizedCarrierSystem:
             
             # 处理所有电极偏移
             success_count = 0
+            use_local_analytic = isinstance(my_f, AnalyticStripPixelField)
+            x_coords_end = [point[0] for point in path_reduced[1:]]
+            y_coords_end = [point[1] for point in path_reduced[1:]]
+            z_coords_end = [point[2] for point in path_reduced[1:]]
             
             for j in range(2 * x_span + 1):
                 x_shift = (j - x_span) * p_x
                 for k in range(2 * y_span + 1):
                     y_shift = (k - y_span) * p_y
                     electrode_idx = j * (2 * y_span + 1) + k
+                    if use_local_analytic:
+                        start_x = [x - x_shift for x in x_coords]
+                        start_y = [y - y_shift for y in y_coords]
+                        end_x = [x - x_shift for x in x_coords_end]
+                        end_y = [y - y_shift for y in y_coords_end]
+                    else:
+                        start_x = [
+                            x - x_shift + dn_x * p_x
+                            for x, dn_x in zip(x_coords, delta_n_x)
+                        ]
+                        start_y = [
+                            y - y_shift + dn_y * p_y
+                            for y, dn_y in zip(y_coords, delta_n_y)
+                        ]
+                        end_x = [
+                            x - x_shift + dn_x * p_x
+                            for x, dn_x in zip(x_coords_end, delta_n_x)
+                        ]
+                        end_y = [
+                            y - y_shift + dn_y * p_y
+                            for y, dn_y in zip(y_coords_end, delta_n_y)
+                        ]
                     
                     try:
                         # 批量计算起点和终点的权重电势
                         U_w_1 = self._get_weighting_potentials_batch(
-                            my_f, 
-                            [x - x_shift + delta_n_x * p_x for (x,delta_n_x) in zip(x_coords, delta_n_x)], 
-                            [y - y_shift + delta_n_y * p_y for (y,delta_n_y) in zip(y_coords, delta_n_y)], 
-                            z_coords, 0
+                            my_f, start_x, start_y, z_coords, 0
                         )
                         
                         # 获取终点的权重电势
-                        x_coords_end = [point[0] for point in path_reduced[1:]]
-                        y_coords_end = [point[1] for point in path_reduced[1:]]
-                        z_coords_end = [point[2] for point in path_reduced[1:]]
-                        
                         U_w_2 = self._get_weighting_potentials_batch(
-                            my_f, 
-                            [x - x_shift + delta_n_x * p_x for (x,delta_n_x) in zip(x_coords_end, delta_n_x)],
-                            [y - y_shift + delta_n_y * p_y for (y,delta_n_y) in zip(y_coords_end, delta_n_y)],
-                            z_coords_end, 0
+                            my_f, end_x, end_y, z_coords_end, 0
                         )
                         
                         # 计算电势差
@@ -724,7 +818,7 @@ class VectorizedCarrierSystem:
                             carrier_type = "hole" if charge > 0 else "electron"
                             logger.warning("%s 载流子%d电极%d信号计算失败: %s", carrier_type, carrier_idx, electrode_idx, e)
                             self._signal_warning_logged = True
-                        continue
+                        raise
             
             # 存储这个载流子的所有电极信号
             if success_count > 0:
@@ -733,8 +827,7 @@ class VectorizedCarrierSystem:
             return success_count > 0
             
         except Exception as e:
-            logger.warning(f"处理载流子{carrier_idx}信号时出错: {e}")
-            return False
+            raise RuntimeError(f"处理载流子{carrier_idx}信号时出错: {e}") from e
      
     def _calculate_signal_multi_contact(self, all_indices, my_f, e0, delta_t, has_irradiation, my_d):
         """多电极情况下的向量化信号计算 - 处理所有载流子"""
@@ -752,11 +845,11 @@ class VectorizedCarrierSystem:
                 self._log_progress_signal(carrier_idx, len(all_indices))
         
         # 统计信号数据
-        total_signal_points = sum(len(sig_list) for sig_list in self.signals[:n_electrodes])
-        non_empty_electrodes = sum(1 for sig_list in self.signals[:n_electrodes] if len(sig_list) > 0)
+        total_signal_points = self._count_signal_points(self.signals)
+        non_empty_carriers = sum(1 for carrier_signals in self.signals if carrier_signals)
         
         logger.info(f"多电极信号计算完成: 处理了{processed_count}个载流子, {n_electrodes}个电极")
-        logger.info(f"有信号的电极: {non_empty_electrodes}/{n_electrodes}, 总信号点数={total_signal_points}")
+        logger.info(f"有信号的载流子: {non_empty_carriers}/{len(self.positions)}, 总信号点数={total_signal_points}")
 
     def _process_carrier_signal_multi(self, carrier_idx, my_f, e0, delta_t, has_irradiation, n_electrodes):
         """处理单个载流子在多电极配置下的信号 - 返回是否成功处理"""
@@ -825,12 +918,6 @@ class VectorizedCarrierSystem:
                     # 存储信号
                     electrode_signals.append(signals)
                     
-                    # 确保信号列表足够长
-                    while len(self.signals) <= j:
-                        self.signals.append([])
-                    
-                    # 存储信号到对应的电极列表
-                    self.signals[j].extend(signals)
                     success_count += 1
                     
                 except Exception as e:
@@ -838,22 +925,26 @@ class VectorizedCarrierSystem:
                         carrier_type = "hole" if charge > 0 else "electron"
                         logger.warning("%s 载流子%d电极%d信号计算失败: %s", carrier_type, carrier_idx, j, e)
                         self._signal_warning_logged = True
-                    continue
+                    raise
             
             # 记录这个载流子的信号统计
             if electrode_signals and carrier_idx < 3:
                 total_signals = sum(len(sigs) for sigs in electrode_signals)
                 non_zero_total = sum(1 for sigs in electrode_signals for s in sigs )
                 logger.debug(f"多电极-载流子{carrier_idx}: 总信号数={total_signals}, 非零信号数={non_zero_total}")
+
+            if success_count > 0:
+                self.signals[carrier_idx] = electrode_signals
             
             return success_count > 0
             
         except Exception as e:
-            logger.warning(f"处理载流子{carrier_idx}多电极信号时出错: {e}")
-            return False
+            raise RuntimeError(
+                f"处理载流子{carrier_idx}多电极信号时出错: {e}"
+            ) from e
     
     def _get_weighting_potentials_batch(self, my_f, x_coords, y_coords, z_coords, electrode_idx):
-        """获取路径点的权重电势；缺失值用 NaN 显式传播。"""
+        """获取路径点的权重电势。"""
         potentials = []
         
         for i in range(len(x_coords)):
@@ -864,8 +955,10 @@ class VectorizedCarrierSystem:
                     f"权重电势获取失败: ({x_coords[i]}, {y_coords[i]}, {z_coords[i]}), 电极{electrode_idx}: {e}"
                 ) from e
             if potential is None:
-                potentials.append(np.nan)
-                continue
+                raise RuntimeError(
+                    f"权重电势获取失败: ({x_coords[i]}, {y_coords[i]}, {z_coords[i]}), "
+                    f"电极{electrode_idx}: 返回 None"
+                )
 
             potentials.append(potential)
             

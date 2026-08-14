@@ -6,11 +6,9 @@
 @Author     : Lin Zhu
 @version    : 2.0
 """
-import sys
 import os
 from array import array
 import time
-import subprocess
 import json
 import random
 import numpy as np
@@ -21,7 +19,7 @@ ROOT.gROOT.SetBatch(True)
 from raser.core.device import build_device as bdv
 from raser.core.field import devsim_field as devfield
 from raser.core.current import cal_current as ccrt
-from raser.core.analog.readout import Amplifier
+from raser.core.frontend.legacy_readout import Amplifier
 from ..signal import draw_save
 from raser.supports.output import output
 from raser.supports.paths import component_path
@@ -229,7 +227,7 @@ def job_main(kwargs):
 
     if kwargs['laser'] != None:
         laser = kwargs['laser']
-        laser_json = component_path("source", "laser", laser + ".json")
+        laser_json = component_path("laser", laser + ".json")
         with open(laser_json) as f:
             laser_dic = json.load(f)
             print(laser_dic)
@@ -247,16 +245,29 @@ def job_main(kwargs):
                     else:
                         amplifier = my_d.amplifier
 
-                    my_f = devfield.DevsimField(my_d.device, my_d.dimension, voltage, my_d.read_out_contact, my_d.mesher, is_plugin=my_d.is_plugin(), irradiation_flux=my_d.irradiation_flux, bounds=my_d.bound,)
+                    my_f = devfield.DevsimField(
+                        my_d.device,
+                        my_d.dimension,
+                        voltage,
+                        my_d.read_out_contact,
+                        my_d.mesher,
+                        is_plugin=my_d.is_plugin(),
+                        irradiation_flux=my_d.irradiation_flux,
+                        bounds=my_d.bound,
+                        field_directory=kwargs["_field_directory"],
+                        interpolation_bins=my_d.device_dict.get(
+                            "field_interpolation_bins"
+                        ),
+                    )
                     if "lgad" in my_d.det_model:
                         my_d.gain_rate_cal(my_f)
                     my_l = LaserInjection(my_d, laser_dic)
 
                     my_current = ccrt.CalCurrentLaser(my_d, my_f, my_l)
-                    path = output(__file__, my_l.model+'position')
+                    path = kwargs["_run_batch_path"]
 
                     ele_current = Amplifier(my_current.sum_cu, amplifier, CDet=my_d.capacitance)
-                    if kwargs['scan'] != None: #assume parameter alter
+                    if kwargs['job'] is not None:
                         # key = my_l.fz_rel
                         tag = 'pos'+str(i)+'_'+'job'+str(kwargs['job'])
                         ele_current.save_signal_TTree(path, tag)
@@ -271,6 +282,8 @@ def job_main(kwargs):
     else:
         # TCT must be with laser
         raise NameError
+    if kwargs["job"] is not None:
+        return
     pos_scan = position_scan(kwargs,my_l,laser_dic,effective_pos_num)
 
     if (np.where(pos_scan[:, 0]>=120)[0].size > 0) and (np.where(pos_scan[:, 0]<=180)[0].size > 0):
@@ -301,13 +314,3 @@ def job_main(kwargs):
 
     output_file = str(project_path("tct", my_l.model+'position'))
     draw_2D_position_error(error_data,output_file)
-
-
-def main(kwargs):
-    scan_number = kwargs['scan']
-    for i in range(scan_number):
-        command = ' '.join(['python3', 'src/raser', '-b', 'tct position_signal',sys.argv[3],sys.argv[4], '--job', str(i),] + sys.argv[5:]) # 'raser', '-sh', 'signal'
-        # command = ' '.join(['python3', 'raser', 'tct signal',sys.argv[3],sys.argv[4], '--job', str(i)] + sys.argv[5:]) # 'raser', '-sh', 'signal'
-        print(command)
-        subprocess.run([command], shell=True)
-    

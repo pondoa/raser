@@ -13,7 +13,6 @@ import os
 import array
 import time
 import subprocess
-import json
 import time
 
 import ROOT
@@ -22,10 +21,11 @@ ROOT.gROOT.SetBatch(True)
 from raser.core.device import build_device as bdv
 from raser.core.field import devsim_field as devfield
 from raser.core.current import cal_current as ccrt
-from raser.core.analog.readout import Amplifier
+from raser.core.frontend.legacy_readout import Amplifier
 from raser.core.interaction.laser import LaserInjection
+from raser.apps._planning import execution_seed
 from raser.supports.output import output, create_path
-from raser.supports.paths import component_path
+from .workflow import runtime_components
 
 def main(kwargs):
     """
@@ -49,35 +49,38 @@ def main(kwargs):
 
     det_name = kwargs['det_name']
     my_d = bdv.Detector(det_name)
+    laser_dic, amplifier = runtime_components(kwargs)
     
     if kwargs['voltage'] != None:
         voltage = kwargs['voltage']
     else:
         voltage = my_d.voltage
 
-    if kwargs['laser'] != None:
-        laser = kwargs['laser']
-        laser_json = component_path("source", "laser", laser + ".json")
-        with open(laser_json) as f:
-            laser_dic = json.load(f)
-    else:
-        # TCT must be with laser
-        raise NameError
-
-    if kwargs['amplifier'] != None:
-        amplifier = kwargs['amplifier']
-    else:
-        amplifier = my_d.amplifier
-
-    my_f = devfield.DevsimField(my_d.device, my_d.dimension, voltage, my_d.read_out_contact, my_d.mesher, is_plugin=my_d.is_plugin(), irradiation_flux=my_d.irradiation_flux, bounds=my_d.bound,)
+    my_f = devfield.DevsimField(
+        my_d.device,
+        my_d.dimension,
+        voltage,
+        my_d.read_out_contact,
+        my_d.mesher,
+        is_plugin=my_d.is_plugin(),
+        irradiation_flux=my_d.irradiation_flux,
+        bounds=my_d.bound,
+        field_directory=kwargs["_field_directory"],
+        interpolation_bins=my_d.device_dict.get("field_interpolation_bins"),
+    )
     if "lgad" in my_d.det_model:
         my_d.gain_rate_cal(my_f)
     my_l = LaserInjection(my_d, laser_dic)
 
     my_current = ccrt.CalCurrentLaser(my_d, my_f, my_l)
-    path = output(__file__, my_l.model)
+    path = kwargs["_run_path"]
 
-    ele_current = Amplifier(my_current.sum_cu, amplifier, CDet=my_d.capacitance)
+    ele_current = Amplifier(
+        my_current.sum_cu,
+        amplifier,
+        seed=execution_seed(kwargs),
+        CDet=my_d.capacitance,
+    )
     if kwargs['scan'] != None: #assume parameter alter
         tag = my_l.fz_rel
         ele_current.save_signal_TTree(path, tag)

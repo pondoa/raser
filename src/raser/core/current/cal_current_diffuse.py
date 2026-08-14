@@ -18,7 +18,7 @@ ROOT.gROOT.SetBatch(True)
 
 from .model import Material
 from ..interaction.carrier_list import PixelCarrierListFromG4P
-from raser.supports.math import Vector
+from .vector import Vector
 
 t_bin = 50e-12
 t_end = 10e-9
@@ -146,7 +146,12 @@ class CalCurrentDiffuse:
     def __init__(self, my_d, my_g4):
         batch = len(my_g4.localpositions)
         layer = len(my_g4.ltz)
-        G4P_carrier_list = PixelCarrierListFromG4P(my_d, my_g4)                 
+        G4P_carrier_list = PixelCarrierListFromG4P(
+            my_d,
+            my_g4,
+            fano_sampling=getattr(my_d, "fano_sampling", False),
+            fano_factor=getattr(my_d, "fano_factor", 0.0),
+        )
         self.collected_charge=[] #temp paras don't save as self.
         self.sum_signal = []
         self.event = []        
@@ -229,4 +234,3 @@ class CalCurrentDiffuse:
                     Hit["index"].append([x,y])
                     Hit["charge"].append(charge)       
         return Hit["index"],Hit["charge"]
-

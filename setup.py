@@ -9,7 +9,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="raser",
-    version="4.1.0",
+    version="5.0",
     author="Xin Shi",
     author_email="Xin.Shi@outlook.com",
     description="RAdiation SEmiconductoR Detector Simulation",

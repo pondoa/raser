@@ -25,7 +25,8 @@ from .carrier import VectorizedCarrierSystem
 
 from ..interaction.carrier_list import CarrierListFromG4P
 from ..interaction.toy_mip import ToyMIPLineSource
-from raser.supports.math import Vector, signal_convolution
+from .convolution import signal_convolution
+from .vector import Vector
 from raser.supports.output import output
 
 t_bin = {
@@ -100,15 +101,19 @@ class CalCurrent:
     def _run_current_calculation(self, my_d, my_f, ionized_pairs, track_position):
         logger.info("current calculation start...")
         self.t_bin = t_bin[my_d.dimension]
-        self.t_end = t_end[my_d.dimension]
-        self.t_start = t_start[my_d.dimension]
-        self.delta_t = delta_t[my_d.dimension]
-        self.n_bin = int((self.t_end+t_tol-self.t_start)/self.t_bin)
+        relative_end = t_end[my_d.dimension]
+        relative_start = t_start[my_d.dimension]
         if my_d.is_plugin():
             self.t_bin = t_bin[1]
-            self.t_end = t_end[1]
-            self.t_start = t_start[1]
-            self.delta_t = delta_t[1]
+            relative_end = t_end[1]
+            relative_start = t_start[1]
+        self.delta_t = delta_t[1] if my_d.is_plugin() else delta_t[my_d.dimension]
+        creation_times = [float(position[3]) for position in track_position]
+        first_creation = min(creation_times, default=0.0)
+        last_creation = max(creation_times, default=0.0)
+        self.t_start = first_creation + relative_start
+        self.t_end = last_creation + relative_end
+        self.n_bin = int((self.t_end + t_tol - self.t_start) / self.t_bin)
 
         self.read_ele_num = my_d.read_ele_num
         if hasattr(my_d, "x_ele_num") and hasattr(my_d, "y_ele_num"):
@@ -308,6 +313,17 @@ class CalCurrent:
                     self.electron_system, n_x, n_y,
                     x_span, y_span, total_electrodes, "electron"
                 )
+        else:
+            total_electrodes = len(read_out_contact)
+            logger.info(f"电流计算: 多电极配置, 总电极数={total_electrodes}")
+            if self.hole_system:
+                hole_signals_found = self._process_system_current_direct(
+                    self.hole_system, total_electrodes, "hole"
+                )
+            if self.electron_system:
+                electron_signals_found = self._process_system_current_direct(
+                    self.electron_system, total_electrodes, "electron"
+                )
         
         logger.info(f"电流计算完成: 空穴{hole_signals_found}点, 电子{electron_signals_found}点")
         
@@ -399,6 +415,58 @@ class CalCurrent:
             hist.SetEntries(hist.GetEntries() + float(np.sum(accumulator != 0.0)))
 
         return signals_found
+
+    def _process_system_current_direct(
+        self, carrier_system, total_electrodes, carrier_type
+    ):
+        if carrier_type == "hole":
+            histograms = self.positive_cu
+        elif carrier_type == "electron":
+            histograms = self.negative_cu
+        else:
+            raise ValueError(f"未知载流子类型: {carrier_type}")
+
+        bin_accumulators = [
+            np.zeros(hist.GetNbinsX() + 2, dtype=np.float64)
+            for hist in histograms
+        ]
+        axis = histograms[0].GetXaxis()
+        x_min = axis.GetXmin()
+        x_max = axis.GetXmax()
+        bin_width = (x_max - x_min) / histograms[0].GetNbinsX()
+        signals_found = 0
+
+        for carrier_idx, carrier_signals in enumerate(carrier_system.signals):
+            if not carrier_signals:
+                continue
+            path = carrier_system.paths_reduced[carrier_idx]
+            for electrode_idx, electrode_signals in enumerate(
+                carrier_signals[:total_electrodes]
+            ):
+                for step_idx, signal_value in enumerate(
+                    electrode_signals[: max(0, len(path) - 1)]
+                ):
+                    time_value = path[step_idx][3] * self.delta_t + t_tol
+                    if time_value < x_min:
+                        bin_idx = 0
+                    elif time_value >= x_max:
+                        bin_idx = histograms[electrode_idx].GetNbinsX() + 1
+                    else:
+                        bin_idx = int((time_value - x_min) / bin_width) + 1
+                    bin_accumulators[electrode_idx][bin_idx] += (
+                        signal_value / self.t_bin
+                    )
+                    signals_found += 1
+
+        for electrode_idx, accumulator in enumerate(bin_accumulators):
+            hist = histograms[electrode_idx]
+            for bin_idx in np.nonzero(accumulator)[0]:
+                hist.SetBinContent(
+                    int(bin_idx),
+                    hist.GetBinContent(int(bin_idx)) + float(accumulator[bin_idx]),
+                )
+            hist.SetEntries(hist.GetEntries() + float(np.sum(accumulator != 0.0)))
+        return signals_found
     
     def _apply_smoothing(self):
         """对电流直方图进行多阶段平滑，减少高频噪声"""
@@ -428,8 +496,6 @@ class CalCurrent:
                 hist.SetBinContent(idx, float(value))
 
         targets = [self.positive_cu, self.negative_cu, self.sum_cu]
-        if hasattr(self, "cross_talk_cu"):
-            targets.append(getattr(self, "cross_talk_cu"))
         if hasattr(self, "gain_current"):
             targets.append(getattr(self.gain_current, "positive_cu", []))
             targets.append(getattr(self.gain_current, "negative_cu", []))
@@ -536,13 +602,6 @@ class CalCurrent:
                 self.gain_current.positive_cu[read_ele_num].SetLineWidth(2)
                 self.gain_current.negative_cu[read_ele_num].SetLineWidth(2)
 
-            has_cross_talk = hasattr(self, "cross_talk_cu") and read_ele_num < len(self.cross_talk_cu)
-            if ("strip" in self.det_model or "pixel" in self.det_model) and has_cross_talk:
-                # make sure you run cross_talk() first and attached cross_talk_cu to self
-                self.cross_talk_cu[read_ele_num].Draw("SAME HIST")
-                self.cross_talk_cu[read_ele_num].SetLineColor(420)#kGreen+4
-                self.cross_talk_cu[read_ele_num].SetLineWidth(2)
-
             legend = ROOT.TLegend(0.5, 0.2, 0.8, 0.5)
             legend.AddEntry(self.negative_cu[read_ele_num], "electron", "l")
             legend.AddEntry(self.positive_cu[read_ele_num], "hole", "l")
@@ -550,9 +609,6 @@ class CalCurrent:
             if hasattr(self, "gain_current"):
                 legend.AddEntry(self.gain_current.negative_cu[read_ele_num], "electron gain", "l")
                 legend.AddEntry(self.gain_current.positive_cu[read_ele_num], "hole gain", "l")
-
-            if "strip" in self.det_model and has_cross_talk:
-                legend.AddEntry(self.cross_talk_cu[read_ele_num], "cross talk", "l")
 
             legend.AddEntry(self.sum_cu[read_ele_num], "total", "l")
             
@@ -573,7 +629,7 @@ class CalCurrent:
             x.append(i+1)
             sum_charge=0
             for j in range(self.n_bin):
-                sum_charge=sum_charge+self.cross_talk_cu[i].GetBinContent(j)*self.t_bin
+                sum_charge=sum_charge+self.sum_cu[i].GetBinContent(j)*self.t_bin
             charge.append(sum_charge/1.6e-19)
         logger.info("Collected charge per electrode (e): %s", list(charge))
         n=int(len(charge))
@@ -594,7 +650,7 @@ class CalCurrent:
         for i in range(self.x_ele_num*self.y_ele_num):
             sum_charge=0
             for j in range(self.n_bin):
-                sum_charge=sum_charge+self.cross_talk_cu[i].GetBinContent(j)*self.t_bin
+                sum_charge=sum_charge+self.sum_cu[i].GetBinContent(j)*self.t_bin
             cce.Fill(i%self.x_ele_num, i//self.x_ele_num, sum_charge/1.6e-19)
             charge.append(sum_charge/1.6e-19)
         logger.info("Collected charge per electrode (e): %s", list(charge))
@@ -609,6 +665,8 @@ class CalCurrent:
 class CalCurrentGain(CalCurrent):
     '''Calculation of gain carriers and gain current, simplified version'''
     def __init__(self, my_d, my_f, my_current):
+        self.timings = StageTimings()
+        self.keep_drift_paths = getattr(my_current, "keep_drift_paths", True)
         self.t_bin = t_bin[my_d.dimension]
         self.t_end = t_end[my_d.dimension]
         self.t_start = t_start[my_d.dimension]
@@ -820,7 +878,13 @@ class CalCurrentGain(CalCurrent):
 
 class CalCurrentG4P(CalCurrent):
     def __init__(self, my_d, my_f, my_g4, batch, keep_drift_paths=True):
-        G4P_carrier_list = CarrierListFromG4P(my_d.material, my_g4, batch)
+        G4P_carrier_list = CarrierListFromG4P(
+            my_d.material,
+            my_g4,
+            batch,
+            fano_sampling=getattr(my_d, "fano_sampling", False),
+            fano_factor=getattr(my_d, "fano_factor", 0.0),
+        )
         self.generated_pairs = sum(G4P_carrier_list.ionized_pairs)
         super().__init__(
             my_d,
@@ -829,13 +893,11 @@ class CalCurrentG4P(CalCurrent):
             G4P_carrier_list.track_position,
             keep_drift_paths=keep_drift_paths,
         )
-        if self.read_ele_num > 1:
-            #self.cross_talk()
-            pass
 
 
 class CalCurrentToyMIP(CalCurrent):
     def __init__(self, my_d, my_f, source: ToyMIPLineSource, keep_drift_paths=True):
+        self.generated_pairs = sum(source.ionized_pairs)
         super().__init__(
             my_d,
             my_f,

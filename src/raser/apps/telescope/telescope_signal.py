@@ -15,7 +15,7 @@ ROOT.gROOT.SetBatch(True)
 import acts
 import numpy as np
 
-from raser.core.interaction.g4_telescope import TelescopeG4Interaction
+from raser.apps.telescope.g4_interaction import TelescopeG4Interaction
 from raser.core.device.build_device import Detector
 from raser.core.current.cal_current_diffuse import CalCurrentDiffuse
 from raser.supports.output import create_path

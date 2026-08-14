@@ -16,7 +16,9 @@ import ROOT
 
 from raser.core.device import build_device as bdv
 from raser.supports.output import output
-from raser.supports.math import is_number, fit_data_normal, fit_data_landau
+from .fitting import fit_data_landau
+from .fitting import fit_data_normal
+from .fitting import is_number
 from raser.supports.paths import component_path
 from raser.supports.paths import project_path
 from raser.supports import runs
@@ -104,11 +106,11 @@ class InputWaveform:
             self.data["gravity_center_charge_error"] = 0
         else:
             # assume strip, one dimensional spacial resolution
-            self.data["ToA"] = get_conjoined_time(self.ToA) # TODO: conjoint measurement
+            self.data["ToA"] = get_conjoined_time(self.ToA, self.amplitude) # TODO: conjoint measurement
             self.data["ToT"] = get_total_amp(self.ToT, 10e-9)
             self.data["amplitude"] = get_total_amp(self.amplitude, self.amplitude_threshold)
             self.data["charge"] = get_total_amp(self.charge, 0.0)
-            self.data[CFD_LABEL] = get_conjoined_time(self.CFD50) # TODO: conjoint measurement
+            self.data[CFD_LABEL] = get_conjoined_time(self.CFD50, self.amplitude) # TODO: conjoint measurement
             self.data["gravity_center_ToT"], self.data["cluster_size_ToT"] = ( get_gravity_center_and_cluster_size(self.ToT, 10e-9)
             )  # TODO: assign a proper value for all DAQ systems
             ( # TODO: assign a proper value for all DAQ systems
@@ -193,12 +195,22 @@ def get_CFD50(hist, CFD, peak_time_bin):
             return previous_time + fraction * (time - previous_time)
     return None
 
-def get_conjoined_time(time_list):
+def get_conjoined_time(time_list, amplitude_list=None):
     # TODO: conjoint measurement
-    new_list = remove_none(time_list)
-    if len(new_list) == 0:
+    if amplitude_list is None:
+        new_list = remove_none(time_list)
+        if len(new_list) == 0:
+            return None
+        return min(new_list)
+    valid_indices = [
+        index
+        for index, value in enumerate(time_list)
+        if value is not None and amplitude_list[index] > 0
+    ]
+    if not valid_indices:
         return None
-    return min(new_list)
+    selected = max(valid_indices, key=lambda index: amplitude_list[index])
+    return time_list[selected]
 
 def get_total_amp(amp_list, amp_thres):
     max_amp = max(amp_list)
@@ -255,15 +267,16 @@ class WaveformStatistics:
         threshold,
         amplitude_threshold,
     ):
-        if my_d.det_model == 'planar' or my_d.det_model == 'lgad':
+        det_model = my_d.det_model.lower()
+        if det_model == 'planar' or det_model == 'lgad':
             my_d.read_ele_num = 1
             self.pitch_x = my_d.l_x
             self.pitch_y = my_d.l_y
-        elif my_d.det_model == 'strip':
+        elif 'strip' in det_model:
             my_d.read_ele_num = my_d.read_ele_num
             self.pitch_x = my_d.p_x
             self.pitch_y = my_d.l_y
-        elif my_d.det_model == 'pixel':
+        elif 'pixel' in det_model:
             my_d.read_ele_num = my_d.x_ele_num * my_d.y_ele_num
             self.pitch_x = my_d.p_x
             self.pitch_y = my_d.p_y
@@ -383,6 +396,11 @@ class WaveformStatistics:
             x2_min = 0
             x2_max = 0
         n2_bin = 100
+        if model == CFD_LABEL and len(data) >= 20:
+            sorted_data = sorted(data)
+            x2_min = sorted_data[int(0.02 * (len(sorted_data) - 1))]
+            x2_max = sorted_data[int(0.98 * (len(sorted_data) - 1))]
+            n2_bin = 30
         histo=ROOT.TH1F("","",n2_bin,x2_min,x2_max)
         for i in range(0,len(data)):
             histo.Fill(data[i])
@@ -686,7 +704,7 @@ def main(kwargs):
     if kwargs['daq'] != None:
         my_d.daq = kwargs['daq']
    
-    daq_json = component_path("electronics", "digital", my_d.daq + ".json")
+    daq_json = component_path("adc", my_d.daq + ".json")
     with open(daq_json) as f:
         daq_dict = json.load(f)
         threshold = daq_dict['threshold']

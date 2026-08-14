@@ -8,14 +8,12 @@ Description:  Define physical models for different materials
 @version    : 3.0
 """
 
-import json
-from pathlib import Path
+import math
 
 import numpy as np
 
 from ..current.model import Material
-from raser.supports.math import Vector
-from raser.supports.paths import component_file_path
+from .model import load_definition
 
 EPSILON_0_F_PER_M = 8.8541878128e-12
 
@@ -36,14 +34,17 @@ class Detector:
         2023/12/03
     """ 
     def __init__(self, device_name):
-        device_json = component_file_path("detector", device_name)
-        with open(device_json) as f:
-            self.device_dict = json.load(f)
-        self.det_name = self.device_dict.get('det_name', Path(device_json).stem)
-        self.field_source = self.device_dict.get('field_source', device_name)
-        self.device = self.field_source
-        self.region = self.field_source
-        self.dimension = self.device_dict['default_dimension']
+        definition = load_definition(device_name)
+        device_json = definition.source_path
+        self.definition_path = device_json
+        self.device_dict = dict(definition.raw)
+        self.det_name = definition.name
+        self.field_source = definition.field_defaults["source"]
+        self.device = self.det_name
+        self.region = self.det_name
+        self.dimension = self.device_dict.get(
+            'field_dimension', self.device_dict['default_dimension']
+        )
 
         self.l_x = self.device_dict['l_x'] 
         self.l_y = self.device_dict["l_y"]  
@@ -56,6 +57,7 @@ class Detector:
 
         self.det_model = self.device_dict['det_model']
         self.doping = self.device_dict['doping']
+        self.input_doping = self._net_doping_cm3(self.doping, self.device_dict)
         self.read_out_contact = self.device_dict["read_out_contact"]
         if "irradiation" in self.device_dict:
             self.irradiation_model = self.device_dict['irradiation']['irradiation_model']
@@ -63,11 +65,6 @@ class Detector:
         else:
             self.irradiation_model = None
             self.irradiation_flux = 0
-
-        if "cross_talk" in self.device_dict:
-            self.cross_talk = self.device_dict['cross_talk']
-        else:
-            self.cross_talk = None
 
         self.g4experiment = self.device_dict.get('g4experiment')
         self.amplifier = self.device_dict.get('amplifier')
@@ -122,6 +119,26 @@ class Detector:
                 self.current_savgol_poly = int(self.device_dict["current_savgol_poly"])
             except (TypeError, ValueError):
                 pass
+        self.fano_sampling = bool(self.device_dict.get("fano_sampling", False))
+        self.fano_factor = float(self.device_dict.get("fano_factor", 0.0))
+        self.weighting_series_terms = int(
+            self.device_dict.get("weighting_series_terms", 100)
+        )
+        for key in (
+            "column_radius_um",
+            "column_cell_x_um",
+            "column_cell_y_um",
+            "readout_column_x_um",
+            "readout_column_y_um",
+            "relative_permittivity",
+        ):
+            if key in self.device_dict:
+                setattr(self, key, float(self.device_dict[key]))
+        if "ground_columns_um" in self.device_dict:
+            self.ground_columns_um = tuple(
+                (float(position[0]), float(position[1]))
+                for position in self.device_dict["ground_columns_um"]
+            )
 
         if "strip" in self.det_model:
             self.x_ele_num = self.device_dict['read_ele_num']
@@ -135,8 +152,6 @@ class Detector:
             )
             self.field_shift_x = self.device_dict['field_shift_x']
             self.field_shift_y = self.device_dict['field_shift_y']
-        elif "hexagonal" in self.det_model:
-            pass
         else:
             self.x_ele_num = 1
             self.y_ele_num = 1
@@ -176,8 +191,10 @@ class Detector:
             self.p_x = self.device_dict["p_x"]
             self.p_y = self.device_dict["p_y"]
 
-        if "hexagonal" in self.det_model:
-            self.p_r = self.device_dict["p_r"]
+        if not hasattr(self, "p_x") and "p_x" in self.device_dict:
+            self.p_x = self.device_dict["p_x"]
+        if not hasattr(self, "p_y") and "p_y" in self.device_dict:
+            self.p_y = self.device_dict["p_y"]
 
         self.depletion_depth = float(self.device_dict.get("depletion_depth", self.l_z))
         self.capacitance = self._resolve_capacitance()
@@ -189,6 +206,17 @@ class Detector:
         if "pixel" in det_model:
             return float(self.p_x) * float(self.p_y)
         return float(self.l_x) * float(self.l_y)
+
+    @staticmethod
+    def _net_doping_cm3(doping, device_dict):
+        if "input_doping" in device_dict:
+            return float(device_dict["input_doping"])
+        try:
+            donors = float(doping.get("Donors", 0.0))
+            acceptors = float(doping.get("Acceptors", 0.0))
+        except (TypeError, ValueError):
+            return 1.0e12
+        return donors - acceptors
 
     def _resolve_capacitance(self):
         if "capacitance_pF" in self.device_dict:
@@ -245,7 +273,7 @@ class Detector:
         alpha_p_list = np.zeros(n)
         for i in range(n):
             Ex,Ey,Ez = my_f._get_e_field(0.5*self.l_x,0.5*self.l_y,z_list[i] * 1e4) # in V/cm, get original field to improve accuracy
-            E_field = Vector(Ex,Ey,Ez).get_length()
+            E_field = math.sqrt(Ex * Ex + Ey * Ey + Ez * Ez)
             alpha_n = cal_coefficient(E_field, -1, self.temperature)
             alpha_p = cal_coefficient(E_field, +1, self.temperature)
             alpha_n_list[i] = alpha_n
