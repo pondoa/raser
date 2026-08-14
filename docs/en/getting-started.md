@@ -14,6 +14,10 @@ Choose one route for the host platform. The commands in this section create
 environments or images. Workflow commands appear under
 [Run RASER](#run-raser).
 
+Installation is intentionally explicit rather than one-click: run the listed
+commands once for the selected platform. After that, activation is one command
+per shell.
+
 ### Native Linux x86-64
 
 The conda environment provides Python 3.11, ROOT, ngspice, and MKL. The project
@@ -86,7 +90,7 @@ For the Lima-based macOS route, build the Ubuntu SIF and use
 
 ## 🔌 Activate a route
 
-At the configured CVMFS site, activate exactly one route:
+Activate exactly one route:
 
 | Route | Command |
 | --- | --- |
@@ -96,16 +100,16 @@ At the configured CVMFS site, activate exactly one route:
 | Automatic local selection | `source env/setup_cvmfs.sh` |
 
 Automatic selection prefers a local Ubuntu SIF, then a local EL9 SIF, and then
-the site conda environment.
+the conda route. The conda route loads the configured CVMFS profile when it is
+available; otherwise it loads conda from `PATH` and activates
+`.conda/envs/raser` automatically.
 
-Outside the configured CVMFS site, activate the prepared conda environment,
-make `geant4-config` visible on `PATH` or set the external install prefix, then
-source the common setup:
+Outside the configured CVMFS site, make `geant4-config` visible on `PATH` or set
+the external install prefix, then use the same one-command activation:
 
 ```bash
-conda activate "$PWD/.conda/envs/raser"
 export RASER_GEANT4_INSTALL=/path/to/geant4-install
-source env/setup.sh
+source env/setup_cvmfs.sh conda
 ```
 
 The setup adds the project CLI, component search path, and `work/` location to

@@ -10,6 +10,8 @@
 
 根据主机平台选择一条路径。本节命令用于创建环境或镜像。工作流命令见[运行 RASER](#运行-raser)。
 
+安装不是一键操作：首次安装时按所选平台依次执行下列命令。安装完成后，每个新 shell 只需一条激活命令。
+
 ### 原生 Linux x86-64
 
 conda 环境提供 Python 3.11、ROOT、ngspice 和 MKL。项目 venv 继承这些系统包，并加入 `env/uv.txt` 中固定版本的 Python 包。
@@ -71,7 +73,7 @@ conda create -p .conda/envs/raser -c conda-forge --file env/conda-macos-arm64.lo
 
 ## 🔌 激活环境路径
 
-在已配置的 CVMFS 站点中激活其中一条路径：
+激活其中一条路径：
 
 | 路径 | 命令 |
 | --- | --- |
@@ -80,14 +82,13 @@ conda create -p .conda/envs/raser -c conda-forge --file env/conda-macos-arm64.lo
 | EL9 SIF | `source env/setup_cvmfs.sh el9` |
 | 本地自动选择 | `source env/setup_cvmfs.sh` |
 
-自动选择依次查找本地 Ubuntu SIF、本地 EL9 SIF 和站点 conda 环境。
+自动选择依次查找本地 Ubuntu SIF、本地 EL9 SIF 和 conda 路径。conda 路径优先加载已配置的 CVMFS profile；若该文件不存在，则从 `PATH` 加载 conda，并自动激活 `.conda/envs/raser`。
 
-在已配置 CVMFS 站点之外，先激活准备好的 conda 环境，使 `geant4-config` 位于 `PATH` 中或设置外部安装前缀，再载入通用设置：
+在已配置 CVMFS 站点之外，使 `geant4-config` 位于 `PATH` 中或设置外部安装前缀，然后使用相同的一条激活命令：
 
 ```bash
-conda activate "$PWD/.conda/envs/raser"
 export RASER_GEANT4_INSTALL=/path/to/geant4-install
-source env/setup.sh
+source env/setup_cvmfs.sh conda
 ```
 
 设置脚本向当前 shell 加入项目 CLI、组件搜索路径与 `work/` 位置。依赖安装在前述环境准备步骤中完成。
