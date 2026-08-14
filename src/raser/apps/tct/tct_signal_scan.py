@@ -59,6 +59,7 @@ def job_main(kwargs):
         irradiation_flux=my_d.irradiation_flux,
         bounds=my_d.bound,
         field_directory=kwargs["_field_directory"],
+        interpolation_bins=my_d.device_dict.get("field_interpolation_bins"),
     )
     if "lgad" in my_d.det_model:
         my_d.gain_rate_cal(my_f)

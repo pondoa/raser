@@ -665,6 +665,8 @@ class CalCurrent:
 class CalCurrentGain(CalCurrent):
     '''Calculation of gain carriers and gain current, simplified version'''
     def __init__(self, my_d, my_f, my_current):
+        self.timings = StageTimings()
+        self.keep_drift_paths = getattr(my_current, "keep_drift_paths", True)
         self.t_bin = t_bin[my_d.dimension]
         self.t_end = t_end[my_d.dimension]
         self.t_start = t_start[my_d.dimension]
@@ -876,7 +878,13 @@ class CalCurrentGain(CalCurrent):
 
 class CalCurrentG4P(CalCurrent):
     def __init__(self, my_d, my_f, my_g4, batch, keep_drift_paths=True):
-        G4P_carrier_list = CarrierListFromG4P(my_d.material, my_g4, batch)
+        G4P_carrier_list = CarrierListFromG4P(
+            my_d.material,
+            my_g4,
+            batch,
+            fano_sampling=getattr(my_d, "fano_sampling", False),
+            fano_factor=getattr(my_d, "fano_factor", 0.0),
+        )
         self.generated_pairs = sum(G4P_carrier_list.ionized_pairs)
         super().__init__(
             my_d,
@@ -889,6 +897,7 @@ class CalCurrentG4P(CalCurrent):
 
 class CalCurrentToyMIP(CalCurrent):
     def __init__(self, my_d, my_f, source: ToyMIPLineSource, keep_drift_paths=True):
+        self.generated_pairs = sum(source.ionized_pairs)
         super().__init__(
             my_d,
             my_f,

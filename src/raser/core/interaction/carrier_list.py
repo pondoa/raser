@@ -7,11 +7,22 @@ Description:  carrier_list.py
 
 import ROOT
 
+from .energy_loss import sample_fano_pairs
+
 ROOT.gROOT.SetBatch(True)
 
 
 class CarrierListFromG4P:
-    def __init__(self, material, my_g4, batch):
+    def __init__(
+        self,
+        material,
+        my_g4,
+        batch,
+        *,
+        fano_sampling=False,
+        fano_factor=0.0,
+        rng=None,
+    ):
         """
         Description:
             Events position and energy depositon
@@ -29,6 +40,9 @@ class CarrierListFromG4P:
             self.energy_loss = 8.4  # ev
         elif material == "Si":
             self.energy_loss = 3.6  # ev
+        self.fano_sampling = bool(fano_sampling)
+        self.fano_factor = float(fano_factor or 0.0)
+        self.rng = rng
 
         if batch == -1 and (
             my_g4.geant4_model == "time_resolution"
@@ -109,12 +123,26 @@ class CarrierListFromG4P:
         self.tracks_step = my_g4.energy_steps[j]
         self.tracks_t_energy_deposition = my_g4.edep_devices[j]  # 为什么不使用？
         self.ionized_pairs = [
-            step * 1e6 / self.energy_loss for step in self.tracks_step
+            self._pairs_from_energy(step) for step in self.tracks_step
         ]
+
+    def _pairs_from_energy(self, energy_mev):
+        mean_pairs = energy_mev * 1e6 / self.energy_loss
+        if not self.fano_sampling:
+            return mean_pairs
+        return sample_fano_pairs(mean_pairs, self.fano_factor, self.rng)
 
 
 class PixelCarrierListFromG4P:
-    def __init__(self, my_d, my_g4):
+    def __init__(
+        self,
+        my_d,
+        my_g4,
+        *,
+        fano_sampling=False,
+        fano_factor=0.0,
+        rng=None,
+    ):
         """
         Description:
             Events position and energy depositon
@@ -139,6 +167,9 @@ class PixelCarrierListFromG4P:
             self.energy_loss = 8.4  # ev
         elif material == "Si":
             self.energy_loss = 3.6  # ev
+        self.fano_sampling = bool(fano_sampling)
+        self.fano_factor = float(fano_factor or 0.0)
+        self.rng = rng
 
         self.track_position, self.ionized_pairs = [], []
         self.layer = layer
@@ -166,11 +197,17 @@ class PixelCarrierListFromG4P:
                     position.append(tp)
                     energy.append(my_g4.energy_steps[j][k])
             s_track_position.append(position)
-            pairs = [step * 1e6 / self.energy_loss for step in energy]
+            pairs = [self._pairs_from_energy(step) for step in energy]
             s_energy.append(pairs)
             del position, energy
         self.track_position.append(s_track_position)
         self.ionized_pairs.append(s_energy)
+
+    def _pairs_from_energy(self, energy_mev):
+        mean_pairs = energy_mev * 1e6 / self.energy_loss
+        if not self.fano_sampling:
+            return mean_pairs
+        return sample_fano_pairs(mean_pairs, self.fano_factor, self.rng)
 
     def split_name(self, volume_name):
         parts = volume_name.split("_")

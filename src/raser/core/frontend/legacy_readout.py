@@ -14,12 +14,14 @@ import json
 import os
 import subprocess
 import time
+from pathlib import Path
 
 import numpy as np
 import ROOT
 
 from .ngspice import set_ngspice_input
 from .ngspice import set_tmp_cir
+from .noise import synthesize_noise_from_config
 from raser.supports.output import output
 from raser.supports.output import delete_file
 from raser.supports.paths import optional_component_path
@@ -189,14 +191,25 @@ class Amplifier:
         self.amplified_currents = []
         self.read_ele_num = len(currents)
         self.time_unit = 10e-12
+        self.detector_capacitance_pF = CDet
+        self.electronics_dir = Path()
+        self.noise_spectrum_frequencies_hz = None
+        self.noise_spectrum_density = None
         # TODO: need to set the time unit corresponding to the oscilloscope or the TDC 
         # TODO: and consistent with the time unit in gen_signal_batch.py
 
         ele_json = optional_component_path("afe", amplifier_name + ".json")
         ele_cir = optional_component_path("afe", amplifier_name + ".cir")
-        if ele_json is not None and os.path.exists(ele_json):
+        use_spice = os.getenv("RASER_USE_SPICE_AMPLIFIER", "").lower()
+        use_spice = use_spice in {"1", "true", "yes", amplifier_name.lower()}
+        if ele_json is not None and os.path.exists(ele_json) and not use_spice:
+            self.electronics_dir = Path(ele_json).parent
             with open(ele_json) as f:
                 self.amplifier_parameters = json.load(f)
+                if self.amplifier_parameters.get("noise_spectrum") is None:
+                    sidecar = self._load_sidecar_noise_config(ele_json)
+                    if sidecar is not None:
+                        self.amplifier_parameters["noise_spectrum"] = sidecar
                 self.name = self.amplifier_parameters['ele_name']
 
             self.amplifier_define(CDet)
@@ -207,13 +220,28 @@ class Amplifier:
                 self.judge_threshold_CFD()
 
         elif ele_cir is not None and os.path.exists(ele_cir):
+            self.electronics_dir = Path(ele_cir).parent
             self.name = amplifier_name
+            self.amplifier_parameters = {
+                "noise_avg": 0.0,
+                "noise_rms": 0.0,
+                "threshold": 0.0,
+            }
+            noise_config = self._load_sidecar_noise_config(ele_cir)
             input_current_strs = set_ngspice_input(currents)
             time_stamp = time.time_ns()
             pid = os.getpid()
             # stamp and thread name for avoiding file name conflict
             path = output(__file__, self.name)
-            tmp_cirs, raws = set_tmp_cir(self.read_ele_num, path, input_current_strs, ele_cir, str(time_stamp)+"_"+str(pid),)
+            tmp_cirs, raws = set_tmp_cir(
+                self.read_ele_num,
+                path,
+                input_current_strs,
+                ele_cir,
+                str(time_stamp)+"_"+str(pid),
+                disable_trnoise=noise_config is not None,
+                detector_capacitance_pF=self.detector_capacitance_pF,
+            )
             for i in range(self.read_ele_num):
                 print("Running ngspice for amplifier simulation on electrode No.%d..."%(i+1))
                 subprocess.run(
@@ -223,6 +251,8 @@ class Amplifier:
                     stderr=subprocess.DEVNULL,
                 )
             self.read_raw_file(raws)
+            if noise_config is not None:
+                self._add_spectral_noise(noise_config, seed)
             # TODO: delete the files properly
             for tmp_cir in tmp_cirs:
                 delete_file(tmp_cir)
@@ -231,6 +261,17 @@ class Amplifier:
 
         else:
             raise NameError("The amplifier file is not found!")
+
+    @staticmethod
+    def _load_sidecar_noise_config(component_path):
+        path = Path(component_path).with_suffix(".noise.json")
+        if not path.is_file():
+            return None
+        with path.open(encoding="utf-8") as stream:
+            value = json.load(stream)
+        if not isinstance(value, dict):
+            raise TypeError(f"Frontend noise definition must be an object: {path}")
+        return value
 
     def amplifier_define(self, CDet):
         """
@@ -355,14 +396,53 @@ class Amplifier:
             self.amplified_currents[i].Scale(self.scale(output_Q_max, input_Q_tot))
 
     def add_noise(self, seed):
+        noise_spectrum = self.amplifier_parameters.get("noise_spectrum")
+        if noise_spectrum is not None:
+            self._add_spectral_noise(noise_spectrum, seed)
+            return
         noise_avg = self.amplifier_parameters["noise_avg"]
         noise_rms = self.amplifier_parameters["noise_rms"]
-        ROOT.gRandom.SetSeed(seed)
+        ROOT.gRandom.SetSeed(0 if seed is None else int(seed))
         for i in range(self.read_ele_num):
             cu = self.amplified_currents[i]
-            for j in range(cu.GetNbinsX()):
+            for j in range(1, cu.GetNbinsX() + 1):
                 noise_height=ROOT.gRandom.Gaus(noise_avg,noise_rms)
                 cu.SetBinContent(j,cu.GetBinContent(j)+noise_height)
+
+    def _add_spectral_noise(self, noise_spectrum, seed):
+        config = dict(noise_spectrum)
+        if str(config.get("model", "")).lower() == "spieler":
+            if self.detector_capacitance_pF is None:
+                raise ValueError("Spieler noise requires Device capacitance")
+            config.setdefault(
+                "transimpedance_ohm",
+                float(self.amplifier_parameters["Broad_Band_Gain"]) * 50.0,
+            )
+            if "pole_frequency_hz" not in config:
+                bandwidth = float(self.amplifier_parameters["Broad_Band_Bandwidth"])
+                impedance = float(self.amplifier_parameters["Broad_Band_Imp"])
+                tau_rc = 1.0e-12 * impedance * self.detector_capacitance_pF
+                tau_bw = 0.35 / (1.0e9 * bandwidth) / 2.2
+                tau = math.sqrt(tau_rc * tau_rc + tau_bw * tau_bw)
+                config["pole_frequency_hz"] = 1.0 / (2.0 * math.pi * tau)
+
+        rms_values = []
+        for channel, histogram in enumerate(self.amplified_currents):
+            noise, frequencies, density = synthesize_noise_from_config(
+                config,
+                histogram.GetNbinsX(),
+                histogram.GetBinWidth(1),
+                base_dir=self.electronics_dir,
+                sensor_capacitance_pF=self.detector_capacitance_pF,
+                seed=None if seed is None else int(seed) + channel,
+                mean=float(self.amplifier_parameters.get("noise_avg", 0.0)),
+            )
+            _set_hist_contents(histogram, _hist_contents(histogram) + noise)
+            rms_values.append(float(np.std(noise)))
+            self.noise_spectrum_frequencies_hz = frequencies
+            self.noise_spectrum_density = density
+        if rms_values:
+            self.amplifier_parameters["noise_rms"] = max(rms_values)
 
     def judge_threshold_CFD(self):
         threshold = self.amplifier_parameters["threshold"]
@@ -375,32 +455,27 @@ class Amplifier:
                 self.amplified_currents[i].Reset()
 
     def read_raw_file(self, raws):
-        time_limit = 100e-9
-        # TODO: make this match the .tran in the .cir file
-        # TODO: the time limit should be consistent with the time limit in gen_signal_scan.py
         for i in range(self.read_ele_num):
             raw = raws[i]
-            with open(raw, 'r') as f:
-                lines = f.readlines()
-                time,volt = [],[]
-
-                for line in lines:
-                    time.append(float(line.split()[0]))
-                    volt.append(float(line.split()[1])*1e3) # convert V to mV
-
-            self.amplified_currents.append(_new_histogram(
-                                "electronics %s"%(self.name)+str(i+1), "electronics %s"%(self.name),
-                                int(time_limit/self.time_unit),0,time[-1],))
-            # the .raw input is not uniform, so we need to slice the time range
-            filled = set()
-            for j in range(len(time)):
-                k = self.amplified_currents[i].FindBin(time[j])
-                self.amplified_currents[i].SetBinContent(k, volt[j])
-                filled.add(k)
-            # fill the empty bins
-            for k in range(1, int(time[-1]/self.time_unit)-1):
-                if k not in filled:
-                    self.amplified_currents[i].SetBinContent(k, self.amplified_currents[i][k-1])
+            data = np.atleast_2d(np.loadtxt(raw, dtype=np.float64))
+            if data.shape[1] < 2 or data.shape[0] < 2:
+                raise ValueError(f"ngspice waveform has insufficient samples: {raw}")
+            times = data[:, 0]
+            volts_mV = data[:, -1] * 1.0e3
+            if not np.all(np.diff(times) > 0.0):
+                raise ValueError(f"ngspice waveform time axis must increase: {raw}")
+            duration = float(times[-1] - times[0])
+            bin_count = max(1, math.ceil(duration / self.time_unit))
+            histogram = _new_histogram(
+                f"electronics {self.name}{i + 1}",
+                f"electronics {self.name}",
+                bin_count,
+                float(times[0]),
+                float(times[0]) + bin_count * self.time_unit,
+            )
+            centers = _hist_bin_centers(histogram)
+            _set_hist_contents(histogram, np.interp(centers, times, volts_mV))
+            self.amplified_currents.append(histogram)
 
     def draw_waveform(self, currents, path):
         for i in range(self.read_ele_num):

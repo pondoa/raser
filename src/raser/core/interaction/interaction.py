@@ -48,6 +48,9 @@ def _vis_driver_needs_ui_session(driver):
         "HEPREPFILE",
         "K3DJUPYTER",
         "MPLJUPYTER",
+        "TSG",
+        "TSG_FILE",
+        "TSG_OFFSCREEN",
         "VRML2FILE",
     }
     return driver.upper() not in batch_drivers
@@ -188,7 +191,16 @@ class GeneralG4Interaction:
                 UImanager.ApplyCommand(
                     "/control/execute {}".format(component_path("g4macro", "vis.mac"))
                 )
-            if g4_dic.get("g4_vis_output"):
+            if g4_dic.get("g4_vis_output") and vis_driver.upper() in {
+                "TSG",
+                "TSG_FILE",
+                "TSG_OFFSCREEN",
+            }:
+                UImanager.ApplyCommand("/vis/tsg/offscreen/set/format zb_png")
+                UImanager.ApplyCommand(
+                    "/vis/tsg/offscreen/set/file {}.png".format(g4_dic["g4_vis_output"])
+                )
+            elif g4_dic.get("g4_vis_output"):
                 UImanager.ApplyCommand("/vis/viewer/set/background 1 1 1")
                 UImanager.ApplyCommand("/vis/ogl/set/printMode vectored")
                 UImanager.ApplyCommand("/vis/ogl/set/printSize 2000 2000")
@@ -205,7 +217,18 @@ class GeneralG4Interaction:
         self.g4RunManager.BeamOn(int(g4_dic["total_events"]))
         if g4_vis:
             UImanager.ApplyCommand("/vis/viewer/flush")
-        if g4_vis and g4_dic.get("g4_vis_output"):
+        if (
+            g4_vis
+            and g4_dic.get("g4_vis_output")
+            and vis_driver.upper()
+            in {
+                "TSG",
+                "TSG_FILE",
+                "TSG_OFFSCREEN",
+            }
+        ):
+            UImanager.ApplyCommand("/vis/viewer/rebuild")
+        elif g4_vis and g4_dic.get("g4_vis_output"):
             UImanager.ApplyCommand("/vis/ogl/export")
         if g4_vis and vis_needs_ui:
             ui.SessionStart()

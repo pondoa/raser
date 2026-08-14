@@ -111,7 +111,8 @@ def _add_detector_source(parser, default_source):
         "--collect", help="collect finished batch jobs", action="store_true"
     )
     parser.add_argument("--events-per-job", type=int, help="events per batch job")
-    parser.add_argument("-vol", "--voltage", type=str, help="bias voltage")
+    parser.add_argument("--experiment", help="signal experiment configuration")
+    parser.add_argument("-vol", "--voltage", type=float, help="bias voltage")
     parser.add_argument("-irr", "--irradiation", type=str, help="irradiation flux")
     parser.add_argument(
         "-g4_vis", help="visualization of Geant4 experiment", action="store_true"

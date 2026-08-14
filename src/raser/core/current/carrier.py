@@ -15,6 +15,7 @@ import numpy as np
 
 from .model import Material
 from .vector import Vector
+from raser.core.field.simple import AnalyticStripPixelField
 
 tolerance_default = 1e-6
 
@@ -66,7 +67,8 @@ class VectorizedCarrierSystem:
             'boundary_checks': 0,
             'carriers_terminated': 0,
             'low_field_terminations': 0,
-            'boundary_terminations': 0
+            'boundary_terminations': 0,
+            'collection_terminations': 0
         }
         
         # 信号存储
@@ -93,6 +95,9 @@ class VectorizedCarrierSystem:
                 params['max_drift_time'] = 100e-9   # 增加最大漂移时间
                 params['min_field_strength'] = self._resolve_min_field_strength(my_d)
                 params['max_vector_steps'] = self._get_param(my_d, 'vector_max_steps', 200000, param_type=int)
+                params["collection_weighting_epsilon"] = (
+                    self._resolve_collection_weighting_epsilon(my_d)
+                )
                 
                 logger.info("探测器参数提取成功")
                 
@@ -247,6 +252,19 @@ class VectorizedCarrierSystem:
             logger.info("使用用户配置的最小电场强度: %.2f V/cm", custom_min_field)
             return custom_min_field
         return 1.0
+
+    def _resolve_collection_weighting_epsilon(self, my_d):
+        value = getattr(my_d, "vector_collection_weighting_epsilon", None)
+        if value is None and hasattr(my_d, "device_dict"):
+            value = my_d.device_dict.get("vector_collection_weighting_epsilon")
+        if value is None:
+            return 5e-3
+        value = float(value)
+        if not 0 < value < 0.5:
+            raise ValueError(
+                "vector_collection_weighting_epsilon must be between 0 and 0.5"
+            )
+        return value
     
     def _calculate_reduced_coords(self, x, y, my_d):
         """计算简化坐标"""
@@ -271,6 +289,14 @@ class VectorizedCarrierSystem:
         y_reduced = (y - my_d.l_y/2 + (my_d.y_ele_num%2)*my_d.p_y/2.0) % my_d.p_y + my_d.field_shift_y
         
         return x_reduced, y_reduced
+
+    def _should_terminate_at_contact(self, my_f, x_reduced, y_reduced, z):
+        if not self.read_out_contact or len(self.read_out_contact) != 1:
+            return False
+        potential = my_f.get_w_p_cached(x_reduced, y_reduced, z, 0)
+        if potential is None:
+            raise RuntimeError("Weighting potential is required for contact collection")
+        return potential >= 1.0 - self._params["collection_weighting_epsilon"]
     
     def _calculate_electrode_numbers(self, x, y, my_d):
         """计算电极编号"""
@@ -440,9 +466,55 @@ class VectorizedCarrierSystem:
             
             # 更新位置
             self._update_carrier_position(idx, delta_x, delta_y, delta_z, dif_x, dif_y, dif_z)
+
+            new_x_reduced, new_y_reduced = self.reduced_positions[idx]
+            new_z = self.positions[idx][2]
+            if self._check_boundary_conditions(
+                self.positions[idx][0], self.positions[idx][1], new_z, my_d
+            ):
+                self._clamp_position_to_device(idx, my_d)
+                new_x_reduced, new_y_reduced = self.reduced_positions[idx]
+                new_z = self.positions[idx][2]
+                if self._should_terminate_at_contact(
+                    my_f, new_x_reduced, new_y_reduced, new_z
+                ):
+                    self.end_conditions[idx] = 5
+                    self.performance_stats["collection_terminations"] += 1
+                else:
+                    self.end_conditions[idx] = 1
+                    self.performance_stats["boundary_terminations"] += 1
+                self.active[idx] = False
+                n_terminated += 1
+                continue
+            if self._should_terminate_at_contact(
+                my_f, new_x_reduced, new_y_reduced, new_z
+            ):
+                self.active[idx] = False
+                self.end_conditions[idx] = 5
+                self.performance_stats["collection_terminations"] += 1
+                n_terminated += 1
         
         self.performance_stats['carriers_terminated'] += n_terminated
         return n_terminated
+
+    def _clamp_position_to_device(self, idx, my_d):
+        x, y, z = self.positions[idx]
+        x = min(max(x, 0.0), my_d.l_x)
+        y = min(max(y, 0.0), my_d.l_y)
+        z = min(max(z, 0.0), my_d.l_z)
+        self.positions[idx] = [x, y, z]
+        self.reduced_positions[idx] = self._calculate_reduced_coords(x, y, my_d)
+        if self.keep_drift_paths:
+            self.paths[idx][-1] = [x, y, z, self.times[idx]]
+        x_num, y_num = self._calculate_electrode_numbers(x, y, my_d)
+        self.paths_reduced[idx][-1] = [
+            self.reduced_positions[idx][0],
+            self.reduced_positions[idx][1],
+            z,
+            self.times[idx],
+            x_num,
+            y_num,
+        ]
 
     def _get_e_field_reduced(self, my_f, x, y, z, idx, field_x=None, field_y=None):
         """安全的电场获取"""
@@ -541,6 +613,7 @@ class VectorizedCarrierSystem:
             'field_error': np.sum(self.end_conditions == 2),
             'low_field': np.sum(self.end_conditions == 3),
             'timeout': np.sum(self.end_conditions == 4),
+            'collection': np.sum(self.end_conditions == 5),
             'active': n_active
         }
         
@@ -678,32 +751,48 @@ class VectorizedCarrierSystem:
             
             # 处理所有电极偏移
             success_count = 0
+            use_local_analytic = isinstance(my_f, AnalyticStripPixelField)
+            x_coords_end = [point[0] for point in path_reduced[1:]]
+            y_coords_end = [point[1] for point in path_reduced[1:]]
+            z_coords_end = [point[2] for point in path_reduced[1:]]
             
             for j in range(2 * x_span + 1):
                 x_shift = (j - x_span) * p_x
                 for k in range(2 * y_span + 1):
                     y_shift = (k - y_span) * p_y
                     electrode_idx = j * (2 * y_span + 1) + k
+                    if use_local_analytic:
+                        start_x = [x - x_shift for x in x_coords]
+                        start_y = [y - y_shift for y in y_coords]
+                        end_x = [x - x_shift for x in x_coords_end]
+                        end_y = [y - y_shift for y in y_coords_end]
+                    else:
+                        start_x = [
+                            x - x_shift + dn_x * p_x
+                            for x, dn_x in zip(x_coords, delta_n_x)
+                        ]
+                        start_y = [
+                            y - y_shift + dn_y * p_y
+                            for y, dn_y in zip(y_coords, delta_n_y)
+                        ]
+                        end_x = [
+                            x - x_shift + dn_x * p_x
+                            for x, dn_x in zip(x_coords_end, delta_n_x)
+                        ]
+                        end_y = [
+                            y - y_shift + dn_y * p_y
+                            for y, dn_y in zip(y_coords_end, delta_n_y)
+                        ]
                     
                     try:
                         # 批量计算起点和终点的权重电势
                         U_w_1 = self._get_weighting_potentials_batch(
-                            my_f, 
-                            [x - x_shift + delta_n_x * p_x for (x,delta_n_x) in zip(x_coords, delta_n_x)], 
-                            [y - y_shift + delta_n_y * p_y for (y,delta_n_y) in zip(y_coords, delta_n_y)], 
-                            z_coords, 0
+                            my_f, start_x, start_y, z_coords, 0
                         )
                         
                         # 获取终点的权重电势
-                        x_coords_end = [point[0] for point in path_reduced[1:]]
-                        y_coords_end = [point[1] for point in path_reduced[1:]]
-                        z_coords_end = [point[2] for point in path_reduced[1:]]
-                        
                         U_w_2 = self._get_weighting_potentials_batch(
-                            my_f, 
-                            [x - x_shift + delta_n_x * p_x for (x,delta_n_x) in zip(x_coords_end, delta_n_x)],
-                            [y - y_shift + delta_n_y * p_y for (y,delta_n_y) in zip(y_coords_end, delta_n_y)],
-                            z_coords_end, 0
+                            my_f, end_x, end_y, z_coords_end, 0
                         )
                         
                         # 计算电势差

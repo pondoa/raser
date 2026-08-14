@@ -17,6 +17,8 @@
 
     "avalanche_bond" : 3.0,
     "avalanche_model" : "Hatakeyama",
+    "enable_gain" : false,
+    "weighting_series_terms" : 20,
     
 
     "bias" : {

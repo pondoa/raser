@@ -23,6 +23,7 @@
     },
 
     "temperature" : 300.0,
+    "weighting_series_terms" : 20,
     "irradiation" : {
         "irradiation_model" : "CommonDefect",
         "irradiation_flux" : 1e12

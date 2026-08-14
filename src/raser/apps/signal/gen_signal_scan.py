@@ -21,7 +21,6 @@ from raser.apps._planning import execution_seed
 ELECTRON_CHARGE_C = 1.60217733e-19
 
 from raser.core.device import build_device as bdv
-from raser.core.interaction.interaction import GeneralG4Interaction
 from raser.core.field import devsim_field as devfield
 from raser.core.current import cal_current as ccrt
 from raser.core.frontend.legacy_readout import Amplifier
@@ -31,6 +30,7 @@ from raser.supports.paths import component_path
 from raser.supports.paths import optional_component_path
 from .experiments import apply_signal_experiment
 from .draw_save import draw_drift_path
+from .runtime import build_current, build_interaction, is_toy_mip_source
 
 
 def _copy_histogram(target, source):
@@ -201,14 +201,15 @@ def _write_cce_event_stats(
 
     for event in range(start_n,end_n):
         print("run events number:%s"%(event))
-        if len(my_g4.p_steps[event-start_n]) <= 5:
+        batch = event - start_n
+        if not is_toy_mip_source(my_g4) and len(my_g4.p_steps[batch]) <= 5:
             continue
         effective_number += 1
-        my_current = ccrt.CalCurrentG4P(
+        my_current = build_current(
             my_d,
             my_f,
             my_g4,
-            event-start_n,
+            batch,
             keep_drift_paths=False,
         )
         ele_current = Amplifier(
@@ -218,8 +219,9 @@ def _write_cce_event_stats(
             CDet=my_d.capacitance,
             is_cut=True,
         )
-        par_in = my_g4.p_steps_current[my_g4.selected_batch_number][0]
-        par_out = my_g4.p_steps_current[my_g4.selected_batch_number][-1]
+        selected_batch = getattr(my_g4, "selected_batch_number", batch)
+        par_in = my_g4.p_steps_current[selected_batch][0]
+        par_out = my_g4.p_steps_current[selected_batch][-1]
         row = {
             "event": event,
             "e_dep": my_g4.edep_devices[event-start_n],
@@ -384,13 +386,14 @@ def batch_loop(
 
     for event in range(start_n,end_n):
         print("run events number:%s"%(event))
-        if len(my_g4.p_steps[event-start_n]) > 5:
+        batch = event - start_n
+        if is_toy_mip_source(my_g4) or len(my_g4.p_steps[batch]) > 5:
             effective_number += 1
-            my_current = ccrt.CalCurrentG4P(
+            my_current = build_current(
                 my_d,
                 my_f,
                 my_g4,
-                event-start_n,
+                batch,
                 keep_drift_paths=event in plot_events,
             )
 
@@ -420,8 +423,9 @@ def batch_loop(
             e_dep_array[0] = my_g4.edep_devices[event-start_n]
             # assume the list of electrons is sorted by particle injection trace
             # and all inside the active region of the detector
-            par_in_array[0], par_in_array[1], par_in_array[2] = my_g4.p_steps_current[my_g4.selected_batch_number][0]
-            par_out_array[0], par_out_array[1], par_out_array[2] = my_g4.p_steps_current[my_g4.selected_batch_number][-1]
+            selected_batch = getattr(my_g4, "selected_batch_number", batch)
+            par_in_array[0], par_in_array[1], par_in_array[2] = my_g4.p_steps_current[selected_batch][0]
+            par_out_array[0], par_out_array[1], par_out_array[2] = my_g4.p_steps_current[selected_batch][-1]
 
             # Note: TTree.Fill() needs the binded variable (namely the address) to be valid and the same with Branch(), 
             # so don't put Fill() into other methods/functions!
@@ -481,6 +485,7 @@ def main(kwargs):
         bounds=my_d.bound,
         field_set=kwargs["_field_set"],
         field_directory=kwargs["_field_directory"],
+        interpolation_bins=my_d.device_dict.get("field_interpolation_bins"),
     )
     if "lgad" in my_d.det_model:
         my_d.gain_rate_cal(my_f)
@@ -498,9 +503,8 @@ def main(kwargs):
         interaction_options["MyActionInitialization"] = kwargs[
             "_g4_action_initialization"
         ]
-    my_g4 = GeneralG4Interaction(
+    my_g4 = build_interaction(
         my_d,
-        my_d.g4_config,
         g4_seed,
         kwargs.get("g4_vis", False),
         **interaction_options,

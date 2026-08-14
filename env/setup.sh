@@ -19,7 +19,7 @@ raser_conda_prefix=
 [ -d "$dir_raser/.conda/envs/raser" ] && raser_conda_prefix=$dir_raser/.conda/envs/raser
 geant4_prefix_hint=${RASER_GEANT4_INSTALL:-${GEANT4_INSTALL:-${GEANT4_DIR:-}}}
 unset PYTHONHOME PYTHONPATH
-raser_ponytail_path=$dir_raser/env/ponytail
+raser_python_startup_path=$dir_raser/env/python-startup
 
 if [ -z "$raser_sif_host" ] && [ -n "${RASER_LCG_VIEW:-}" ] && [ -r "$RASER_LCG_VIEW/setup.sh" ]; then
     . "$RASER_LCG_VIEW/setup.sh"
@@ -83,10 +83,10 @@ if [ -n "$root_prefix" ]; then
 else
     unset ROOTSYS
 fi
-if [ -d "$raser_ponytail_path" ]; then
-    # env/ponytail contains version-gated Python startup hooks for external
+if [ -d "$raser_python_startup_path" ]; then
+    # env/python-startup contains version-gated Python startup hooks for external
     # packages whose import-time behavior depends on the selected route.
-    PYTHONPATH=$raser_ponytail_path${PYTHONPATH:+:$PYTHONPATH}
+    PYTHONPATH=$raser_python_startup_path${PYTHONPATH:+:$PYTHONPATH}
 fi
 PYTHONPATH=$dir_raser/src:$dir_raser${PYTHONPATH:+:$PYTHONPATH}
 export PATH PYTHONPATH LD_LIBRARY_PATH GEANT4_INSTALL=$geant4_prefix GEANT4_DIR=$geant4_prefix

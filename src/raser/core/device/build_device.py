@@ -57,6 +57,7 @@ class Detector:
 
         self.det_model = self.device_dict['det_model']
         self.doping = self.device_dict['doping']
+        self.input_doping = self._net_doping_cm3(self.doping, self.device_dict)
         self.read_out_contact = self.device_dict["read_out_contact"]
         if "irradiation" in self.device_dict:
             self.irradiation_model = self.device_dict['irradiation']['irradiation_model']
@@ -118,6 +119,26 @@ class Detector:
                 self.current_savgol_poly = int(self.device_dict["current_savgol_poly"])
             except (TypeError, ValueError):
                 pass
+        self.fano_sampling = bool(self.device_dict.get("fano_sampling", False))
+        self.fano_factor = float(self.device_dict.get("fano_factor", 0.0))
+        self.weighting_series_terms = int(
+            self.device_dict.get("weighting_series_terms", 100)
+        )
+        for key in (
+            "column_radius_um",
+            "column_cell_x_um",
+            "column_cell_y_um",
+            "readout_column_x_um",
+            "readout_column_y_um",
+            "relative_permittivity",
+        ):
+            if key in self.device_dict:
+                setattr(self, key, float(self.device_dict[key]))
+        if "ground_columns_um" in self.device_dict:
+            self.ground_columns_um = tuple(
+                (float(position[0]), float(position[1]))
+                for position in self.device_dict["ground_columns_um"]
+            )
 
         if "strip" in self.det_model:
             self.x_ele_num = self.device_dict['read_ele_num']
@@ -170,6 +191,11 @@ class Detector:
             self.p_x = self.device_dict["p_x"]
             self.p_y = self.device_dict["p_y"]
 
+        if not hasattr(self, "p_x") and "p_x" in self.device_dict:
+            self.p_x = self.device_dict["p_x"]
+        if not hasattr(self, "p_y") and "p_y" in self.device_dict:
+            self.p_y = self.device_dict["p_y"]
+
         self.depletion_depth = float(self.device_dict.get("depletion_depth", self.l_z))
         self.capacitance = self._resolve_capacitance()
 
@@ -180,6 +206,17 @@ class Detector:
         if "pixel" in det_model:
             return float(self.p_x) * float(self.p_y)
         return float(self.l_x) * float(self.l_y)
+
+    @staticmethod
+    def _net_doping_cm3(doping, device_dict):
+        if "input_doping" in device_dict:
+            return float(device_dict["input_doping"])
+        try:
+            donors = float(doping.get("Donors", 0.0))
+            acceptors = float(doping.get("Acceptors", 0.0))
+        except (TypeError, ValueError):
+            return 1.0e12
+        return donors - acceptors
 
     def _resolve_capacitance(self):
         if "capacitance_pF" in self.device_dict:

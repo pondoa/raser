@@ -22,7 +22,7 @@
     "default_dimension": 3,  
 
     "read_out_contact": [
-        {"x_span": 0, "y_span": 0, "name": "top"}
+        {"x_span": 1, "y_span": 1, "name": "top"}
     ],
     "field_shift_x": 0,  
     "field_shift_y": 0, 
@@ -32,5 +32,6 @@
             "file": "./work/general_pixel/field/default/200V.tdr"
         },
         "mesher":"sde"
-    }
+    },
+    "weighting_series_terms": 20
 }

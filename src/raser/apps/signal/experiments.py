@@ -78,6 +78,8 @@ def compose_g4_config(experiment, source):
             "g4_vis": False,
         }
     g4_config.update(source)
+    if "kind" in source:
+        g4_config["source_kind"] = source["kind"]
     for metadata_key in ("name", "kind", "description"):
         g4_config.pop(metadata_key, None)
     return g4_config

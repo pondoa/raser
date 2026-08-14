@@ -9,13 +9,13 @@
     "l_z" : 50,
 
     "doping":{
-        "Acceptors" : "3.0e16*exp(-pow((x-5.5e-4)/(0.17e-4),2)) + 3.0e12*(step((49e-4)-x)-step(5.5e-4-x)) + 1.0e19*(step((50e-4)-x)-step((49e-4)-x))",
-        "Donors" : "1.0e19*step(1e-4-x) + 3.0e12*(step((4.0e-4)-x)-step(1e-4-x)) + 3.0e16*exp(-pow((x-4.0e-4)/(0.17e-4),2))"
+        "Acceptors" : "4.0e16*exp(-0.5*pow((x-5.5e-4)/(0.17e-4),2)) + 3.0e12*(step((49e-4)-x)-step(5.5e-4-x)) + 1.0e19*(step((50e-4)-x)-step((49e-4)-x))",
+        "Donors" : "1.0e19*step(1e-4-x) + 3.0e12*(step((4.0e-4)-x)-step(1e-4-x)) + 4.0e16*exp(-0.5*pow((x-4.0e-4)/(0.17e-4),2))"
     },
 
     "bias" : {
         "electrode" : "top",
-        "voltage" : 200.0
+        "voltage" : 350.0
     },
 
     "temperature" : 300.0,

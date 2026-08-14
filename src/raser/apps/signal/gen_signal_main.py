@@ -17,15 +17,15 @@ import ROOT
 ROOT.gROOT.SetBatch(True)
 
 from raser.core.device import build_device as bdv
-from raser.core.interaction.interaction import GeneralG4Interaction
 from raser.core.interaction.detector_construction import GeneralDetectorConstruction
 from raser.core.interaction.action_initialization import GeneralActionInitialization
 from raser.core.field import devsim_field as devfield
-from raser.core.current import cal_current as ccrt
 from raser.core.frontend.legacy_readout import Amplifier
 from raser.apps._planning import execution_seed
 from .draw_save import energy_deposition, draw_drift_path
 from .experiments import apply_signal_experiment
+from .runtime import build_current
+from .runtime import build_interaction
 
 
 def main(kwargs):
@@ -78,6 +78,7 @@ def main(kwargs):
         bounds=my_d.bound,
         field_set=kwargs["_field_set"],
         field_directory=kwargs["_field_directory"],
+        interpolation_bins=my_d.device_dict.get("field_interpolation_bins"),
     )
     if "lgad" in my_d.det_model:
         my_d.gain_rate_cal(my_f)
@@ -88,15 +89,15 @@ def main(kwargs):
         interaction_options["MyActionInitialization"] = kwargs[
             "_g4_action_initialization"
         ]
-    my_g4 = GeneralG4Interaction(
+    my_g4 = build_interaction(
         my_d,
-        my_d.g4_config,
         g4_seed,
         g4_vis,
         **interaction_options,
     )
     try:
-        my_current = ccrt.CalCurrentG4P(my_d, my_f, my_g4, -1)
+        batch = 0 if my_g4.geant4_model == "toy_mip" else -1
+        my_current = build_current(my_d, my_f, my_g4, batch)
         ele_current = Amplifier(
             my_current.sum_cu,
             my_d.amplifier,

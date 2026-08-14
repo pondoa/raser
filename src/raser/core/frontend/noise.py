@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
+from typing import Any
 from typing import Literal
 from typing import TypeAlias
+from typing import cast
 
 import numpy as np
 from numpy.typing import NDArray
@@ -291,3 +293,89 @@ def synthesize_noise_from_spectrum(
             noise *= target_rms / current_rms
     noise += mean
     return noise
+
+
+def synthesize_noise_from_config(
+    noise_spectrum,
+    n_samples: int,
+    time_step_s: float,
+    *,
+    base_dir: str | Path | None = None,
+    sensor_capacitance_pF: float | None = None,
+    seed: int | None = None,
+    mean: float = 0.0,
+    target_rms: float | None = None,
+):
+    """Resolve a Frontend noise definition and synthesize one waveform."""
+    config: dict[str, Any] = (
+        {"file": noise_spectrum}
+        if isinstance(noise_spectrum, (str, Path))
+        else dict(noise_spectrum)
+    )
+    model = str(config.get("model", "")).lower()
+    spectrum_file = config.get("file") or config.get("path")
+    if model == "spieler":
+        if sensor_capacitance_pF is None:
+            raise ValueError("Spieler noise requires Device capacitance")
+        frequencies, density = spieler_noise_spectrum(
+            float(sensor_capacitance_pF),
+            voltage_noise_V_per_sqrtHz=float(
+                config.get("voltage_noise_V_per_sqrtHz", 0.0)
+            )
+            + float(config.get("voltage_noise_nV_per_sqrtHz", 0.0)) * 1.0e-9,
+            current_noise_A_per_sqrtHz=float(
+                config.get("current_noise_A_per_sqrtHz", 0.0)
+            )
+            + float(config.get("current_noise_fA_per_sqrtHz", 0.0)) * 1.0e-15,
+            flicker_voltage_noise_V2_Hz=float(
+                config.get("flicker_voltage_noise_V2_Hz", 0.0)
+            )
+            + float(config.get("flicker_voltage_noise_nV2_Hz", 0.0)) * 1.0e-18,
+            transimpedance_ohm=float(config["transimpedance_ohm"]),
+            min_frequency_hz=float(config.get("min_frequency_hz", 1.0)),
+            max_frequency_hz=float(config.get("max_frequency_hz", 1.0e9)),
+            points_per_decade=int(config.get("points_per_decade", 100)),
+            pole_frequency_hz=(
+                float(config["pole_frequency_hz"])
+                if config.get("pole_frequency_hz") is not None
+                else None
+            ),
+        )
+    elif spectrum_file is not None:
+        path = Path(spectrum_file).expanduser()
+        if not path.is_absolute() and base_dir is not None:
+            path = Path(base_dir) / path
+        frequencies, density = load_noise_spectrum(path)
+    else:
+        raise ValueError("Noise definition requires a model or spectrum file")
+
+    density_type = str(config.get("density_type", "amplitude"))
+    if density_type not in {"amplitude", "power"}:
+        raise ValueError(f"Unsupported density type: {density_type}")
+    noise = synthesize_noise_from_spectrum(
+        frequencies,
+        density,
+        n_samples,
+        time_step_s,
+        seed=seed,
+        density_type=cast(DensityType, density_type),
+        unit_scale=float(config.get("unit_scale", 1.0)),
+        mean=mean,
+        target_rms=(
+            float(config["target_rms"])
+            if config.get("target_rms") is not None
+            else target_rms
+        ),
+        min_frequency_hz=(
+            float(config["min_frequency_hz"])
+            if config.get("min_frequency_hz") is not None
+            else None
+        ),
+        max_frequency_hz=(
+            float(config["max_frequency_hz"])
+            if config.get("max_frequency_hz") is not None
+            else None
+        ),
+        randomize_amplitude=bool(config.get("randomize_amplitude", True)),
+    )
+    return noise, frequencies, density
