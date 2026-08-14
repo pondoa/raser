@@ -36,6 +36,7 @@ class Detector:
     def __init__(self, device_name):
         definition = load_definition(device_name)
         device_json = definition.source_path
+        self.definition_path = device_json
         self.device_dict = dict(definition.raw)
         self.det_name = definition.name
         self.field_source = definition.field_defaults["source"]

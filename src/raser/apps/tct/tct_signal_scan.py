@@ -23,6 +23,7 @@ from raser.supports.output import output
 from raser.supports.paths import component_path
 
 from raser.core.interaction.laser import LaserInjection
+from raser.apps._planning import execution_seed
 
 
 def job_main(kwargs):
@@ -66,7 +67,12 @@ def job_main(kwargs):
     my_current = ccrt.CalCurrentLaser(my_d, my_f, my_l)
     path = kwargs["_run_batch_path"]
 
-    ele_current = Amplifier(my_current.sum_cu, amplifier, seed=int(kwargs['job']), CDet=my_d.capacitance) # job number
+    ele_current = Amplifier(
+        my_current.sum_cu,
+        amplifier,
+        seed=execution_seed(kwargs, offset=int(kwargs["job"])),
+        CDet=my_d.capacitance,
+    )
     if kwargs['job'] is not None:
         # key = my_l.fz_rel
         tag = kwargs['job']

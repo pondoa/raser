@@ -10,6 +10,8 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 
+from .sensor_network import SensorNetwork
+
 
 @dataclass(frozen=True)
 class CurrentSource:
@@ -58,6 +60,7 @@ def assemble_frontend(
     sources: Sequence[CurrentSource],
     sensor_values: Mapping[str, Any],
     afe: Mapping[str, Any],
+    sensor_network: SensorNetwork | None = None,
 ) -> FrontendCircuit:
     if not sources:
         raise ValueError("Frontend requires electrode current sources")
@@ -69,9 +72,35 @@ def assemble_frontend(
         raise ValueError("Frontend sources must share one time axis")
     origin = times[0]
 
+    if sensor_network is not None:
+        missing_sources = set(electrodes) - set(sensor_network.source_nodes)
+        if missing_sources:
+            raise ValueError(
+                "Sensor network has no nodes for: " + ", ".join(sorted(missing_sources))
+            )
+        duplicated_values = {
+            "bulk_capacitance_pF",
+            "interelectrode_capacitance_pF",
+            "bias_resistance_ohm",
+            "ac_coupling_capacitance_pF",
+        } & set(sensor_values)
+        if duplicated_values:
+            raise ValueError(
+                "Sensor network duplicates lumped values: "
+                + ", ".join(sorted(duplicated_values))
+            )
+
     lines = ["* RASER sensor and frontend"]
     for index, source in enumerate(sources):
-        lines.append(f"I{index} {source.electrode} 0 {_pwl(source, origin)}")
+        source_node = (
+            sensor_network.source_nodes[source.electrode]
+            if sensor_network is not None
+            else source.electrode
+        )
+        lines.append(f"I{index} {source_node} 0 {_pwl(source, origin)}")
+
+    if sensor_network is not None:
+        lines.append(sensor_network.netlist.rstrip())
 
     bulk_capacitance = sensor_values.get("bulk_capacitance_pF")
     if bulk_capacitance is not None:
@@ -96,15 +125,21 @@ def assemble_frontend(
     input_resistance = afe.get("input_resistance_ohm", afe.get("Broad_Band_Imp"))
     voltage_gain = afe.get("voltage_gain", afe.get("Broad_Band_Gain"))
     outputs = []
-    for index, electrode in enumerate(electrodes):
-        input_node = f"afe_in_{index}"
+    sensor_outputs = (
+        tuple(sensor_network.output_nodes.items())
+        if sensor_network is not None
+        else tuple((electrode, electrode) for electrode in electrodes)
+    )
+    for index, (electrode, sensor_node) in enumerate(sensor_outputs):
+        input_node = sensor_node if sensor_network is not None else f"afe_in_{index}"
         output_node = f"afe_out_{index}"
-        if ac_coupling is not None:
-            lines.append(
-                f"Cac{index} {electrode} {input_node} {float(ac_coupling):.12g}p"
-            )
-        else:
-            lines.append(f"Rconnect{index} {electrode} {input_node} 1u")
+        if sensor_network is None:
+            if ac_coupling is not None:
+                lines.append(
+                    f"Cac{index} {electrode} {input_node} {float(ac_coupling):.12g}p"
+                )
+            else:
+                lines.append(f"Rconnect{index} {electrode} {input_node} 1u")
         if input_resistance is not None:
             lines.append(f"Rin{index} {input_node} 0 {float(input_resistance):.12g}")
         if voltage_gain is None:
@@ -121,7 +156,7 @@ def assemble_frontend(
 
     lines.append(".end")
     return FrontendCircuit(
-        electrodes=electrodes,
+        electrodes=tuple(electrode for electrode, _ in sensor_outputs),
         netlist="\n".join(lines) + "\n",
         outputs=tuple(outputs),
         sensor_values=dict(sensor_values),

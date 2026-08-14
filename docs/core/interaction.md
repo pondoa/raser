@@ -55,11 +55,20 @@ n_{\mathrm{SPA}}(s,r)
 I(s,r)\exp[-\alpha(s+d)].
 ```
 
-For TPA, the carrier density follows the square of the local intensity:
+For TPA, the spatial calculation uses the pulse fluence `F(s,r)` and a
+unit-area temporal Gaussian `g(t)`. The pulse-integrated carrier density is
 
 ```math
 n_{\mathrm{TPA}}(s,r)
-=\frac{\beta_2\lambda}{2h_{\mathrm P}c}I^2(s,r).
+=\frac{\beta_2\lambda}{2h_{\mathrm P}c}
+F^2(s,r)\int g^2(t)\,dt,
+```
+
+with
+
+```math
+\int g^2(t)\,dt
+=\frac{\sqrt{2\ln2}}{\sqrt{\pi}\,\tau_{\mathrm{FWHM}}}.
 ```
 
 Here, `s` is the coordinate along the beam, `r` is the transverse distance

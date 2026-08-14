@@ -393,7 +393,7 @@ class VectorizedCarrierSystem:
             
             # 时间检查
             #if self.times[idx] > params['max_drift_time']:
-            if self.times[idx] > params['max_vector_steps']:
+            if self.steps_drifted[idx] >= params['max_vector_steps']:
                 self.active[idx] = False
                 self.end_conditions[idx] = 4
                 n_terminated += 1
@@ -610,7 +610,7 @@ class VectorizedCarrierSystem:
         
         # 统计信号计算结果
         total_carriers_with_signals = sum(1 for carrier_signals in self.signals if carrier_signals)
-        total_signal_points = sum(len(electrode_signals) for carrier_signals in self.signals for electrode_signals in carrier_signals)
+        total_signal_points = self._count_signal_points(self.signals)
         
         logger.info(f"信号计算完成: {total_carriers_with_signals}个载流子有信号, 总信号点数={total_signal_points}")
         
@@ -619,6 +619,11 @@ class VectorizedCarrierSystem:
         
         end_time = time.time()
         logger.info(f"批量信号计算完成: 耗时{end_time - start_time:.2f}秒")
+
+    def _count_signal_points(self, values):
+        if isinstance(values, (list, tuple)):
+            return sum(self._count_signal_points(value) for value in values)
+        return 1
 
     def _calculate_signal_single_contact(self, all_indices, my_f, e0, delta_t, has_irradiation, my_d):
         """单电极情况下的信号计算"""
@@ -724,7 +729,7 @@ class VectorizedCarrierSystem:
                             carrier_type = "hole" if charge > 0 else "electron"
                             logger.warning("%s 载流子%d电极%d信号计算失败: %s", carrier_type, carrier_idx, electrode_idx, e)
                             self._signal_warning_logged = True
-                        continue
+                        raise
             
             # 存储这个载流子的所有电极信号
             if success_count > 0:
@@ -733,8 +738,7 @@ class VectorizedCarrierSystem:
             return success_count > 0
             
         except Exception as e:
-            logger.warning(f"处理载流子{carrier_idx}信号时出错: {e}")
-            return False
+            raise RuntimeError(f"处理载流子{carrier_idx}信号时出错: {e}") from e
      
     def _calculate_signal_multi_contact(self, all_indices, my_f, e0, delta_t, has_irradiation, my_d):
         """多电极情况下的向量化信号计算 - 处理所有载流子"""
@@ -752,11 +756,11 @@ class VectorizedCarrierSystem:
                 self._log_progress_signal(carrier_idx, len(all_indices))
         
         # 统计信号数据
-        total_signal_points = sum(len(sig_list) for sig_list in self.signals[:n_electrodes])
-        non_empty_electrodes = sum(1 for sig_list in self.signals[:n_electrodes] if len(sig_list) > 0)
+        total_signal_points = self._count_signal_points(self.signals)
+        non_empty_carriers = sum(1 for carrier_signals in self.signals if carrier_signals)
         
         logger.info(f"多电极信号计算完成: 处理了{processed_count}个载流子, {n_electrodes}个电极")
-        logger.info(f"有信号的电极: {non_empty_electrodes}/{n_electrodes}, 总信号点数={total_signal_points}")
+        logger.info(f"有信号的载流子: {non_empty_carriers}/{len(self.positions)}, 总信号点数={total_signal_points}")
 
     def _process_carrier_signal_multi(self, carrier_idx, my_f, e0, delta_t, has_irradiation, n_electrodes):
         """处理单个载流子在多电极配置下的信号 - 返回是否成功处理"""
@@ -825,12 +829,6 @@ class VectorizedCarrierSystem:
                     # 存储信号
                     electrode_signals.append(signals)
                     
-                    # 确保信号列表足够长
-                    while len(self.signals) <= j:
-                        self.signals.append([])
-                    
-                    # 存储信号到对应的电极列表
-                    self.signals[j].extend(signals)
                     success_count += 1
                     
                 except Exception as e:
@@ -838,22 +836,26 @@ class VectorizedCarrierSystem:
                         carrier_type = "hole" if charge > 0 else "electron"
                         logger.warning("%s 载流子%d电极%d信号计算失败: %s", carrier_type, carrier_idx, j, e)
                         self._signal_warning_logged = True
-                    continue
+                    raise
             
             # 记录这个载流子的信号统计
             if electrode_signals and carrier_idx < 3:
                 total_signals = sum(len(sigs) for sigs in electrode_signals)
                 non_zero_total = sum(1 for sigs in electrode_signals for s in sigs )
                 logger.debug(f"多电极-载流子{carrier_idx}: 总信号数={total_signals}, 非零信号数={non_zero_total}")
+
+            if success_count > 0:
+                self.signals[carrier_idx] = electrode_signals
             
             return success_count > 0
             
         except Exception as e:
-            logger.warning(f"处理载流子{carrier_idx}多电极信号时出错: {e}")
-            return False
+            raise RuntimeError(
+                f"处理载流子{carrier_idx}多电极信号时出错: {e}"
+            ) from e
     
     def _get_weighting_potentials_batch(self, my_f, x_coords, y_coords, z_coords, electrode_idx):
-        """获取路径点的权重电势；缺失值用 NaN 显式传播。"""
+        """获取路径点的权重电势。"""
         potentials = []
         
         for i in range(len(x_coords)):
@@ -864,8 +866,10 @@ class VectorizedCarrierSystem:
                     f"权重电势获取失败: ({x_coords[i]}, {y_coords[i]}, {z_coords[i]}), 电极{electrode_idx}: {e}"
                 ) from e
             if potential is None:
-                potentials.append(np.nan)
-                continue
+                raise RuntimeError(
+                    f"权重电势获取失败: ({x_coords[i]}, {y_coords[i]}, {z_coords[i]}), "
+                    f"电极{electrode_idx}: 返回 None"
+                )
 
             potentials.append(potential)
             

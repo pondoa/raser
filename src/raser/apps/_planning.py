@@ -10,6 +10,13 @@ from typing import Any, Mapping
 from raser.supports import runs
 
 
+def execution_seed(kwargs: Mapping[str, Any], *, offset: int = 0) -> int:
+    seed = int(kwargs.get("seed") or 0) + int(offset)
+    if seed < 0:
+        raise ValueError("Run seed must be non-negative")
+    return seed
+
+
 @dataclass(frozen=True)
 class ComponentSelection:
     kind: str

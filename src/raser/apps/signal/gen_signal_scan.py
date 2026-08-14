@@ -16,6 +16,8 @@ import random
 import ROOT
 ROOT.gROOT.SetBatch(True)
 
+from raser.apps._planning import execution_seed
+
 ELECTRON_CHARGE_C = 1.60217733e-19
 
 from raser.core.device import build_device as bdv
@@ -155,6 +157,7 @@ def _write_cce_event_stats(
     my_g4,
     total_events,
     instance_number,
+    g4_seed,
     output_path,
 ):
     start_n = instance_number * total_events
@@ -211,7 +214,7 @@ def _write_cce_event_stats(
         ele_current = Amplifier(
             my_current.sum_cu,
             my_d.amplifier,
-            seed=event,
+            seed=g4_seed + event - start_n,
             CDet=my_d.capacitance,
             is_cut=True,
         )
@@ -317,6 +320,7 @@ def batch_loop(
             my_g4,
             total_events,
             instance_number,
+            g4_seed,
             output_path,
         )
         return
@@ -394,7 +398,7 @@ def batch_loop(
                 ele_current = Amplifier(
                     my_current.sum_cu,
                     my_d.amplifier,
-                    seed=event,
+                    seed=g4_seed + event - start_n,
                     CDet=my_d.capacitance,
                     is_cut=True,
                 )
@@ -487,7 +491,7 @@ def main(kwargs):
     job_number = kwargs['job']
     instance_number = job_number
 
-    g4_seed = instance_number * total_events
+    g4_seed = execution_seed(kwargs, offset=instance_number * total_events)
     random.seed(g4_seed)
     interaction_options = {}
     if kwargs.get("_g4_action_initialization") is not None:

@@ -24,6 +24,7 @@ from raser.core.field import devsim_field as devfield
 from raser.core.current import cal_current as ccrt
 from raser.core.frontend.legacy_readout import Amplifier
 from raser.core.interaction.laser import LaserInjection
+from raser.apps._planning import execution_seed
 from raser.supports.output import output, create_path
 from raser.supports.paths import component_path
 
@@ -87,7 +88,12 @@ def main(kwargs):
     my_current = ccrt.CalCurrentLaser(my_d, my_f, my_l)
     path = kwargs["_run_path"]
 
-    ele_current = Amplifier(my_current.sum_cu, amplifier, CDet=my_d.capacitance)
+    ele_current = Amplifier(
+        my_current.sum_cu,
+        amplifier,
+        seed=execution_seed(kwargs),
+        CDet=my_d.capacitance,
+    )
     if kwargs['scan'] != None: #assume parameter alter
         tag = my_l.fz_rel
         ele_current.save_signal_TTree(path, tag)

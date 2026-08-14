@@ -28,6 +28,26 @@ from .devsim_draw import *
 os.environ["OMP_NUM_THREADS"] = "1"
 
 
+def _resolve_impact_model(detector):
+    return detector.avalanche_model if detector.has_avalanche else None
+
+
+def _voltage_milestones(v_goal, milestone_step):
+    if v_goal == 0:
+        return []
+    if milestone_step == 0:
+        raise ValueError("Field milestone step must be non-zero")
+    direction = 1.0 if v_goal > 0 else -1.0
+    interval = abs(float(milestone_step))
+    milestones = [
+        direction * index * interval
+        for index in range(1, int(abs(v_goal) / interval) + 1)
+    ]
+    if not milestones or abs(milestones[-1]) < abs(v_goal):
+        milestones.append(float(v_goal))
+    return milestones
+
+
 def _legacy_solver_parameters(configuration, *, weightfield):
     solver = configuration["solver"]
     initial = solver["initial"]
@@ -103,10 +123,7 @@ def main (kwargs):
     else:
         irradiation_model=None
         irradiation_flux=0
-    if 'avalanche_model' in MyDetector.device_dict:
-        impact_model=MyDetector.device_dict['avalanche_model']
-    else:
-        impact_model=None
+    impact_model = _resolve_impact_model(MyDetector)
         
     if is_wf == True:
         readout_contacts=[]
@@ -190,7 +207,7 @@ def main (kwargs):
         step_too_small = False
         milestone_flag = False
         goal_flag = False
-        voltage_milestones = [n*milestone_step for n in range(1, int(abs(v_goal)/abs(milestone_step)) + 1)]
+        voltage_milestones = _voltage_milestones(v_goal, milestone_step)
         while abs(v_current) <= abs(v_goal):
             v_trial = v_current + voltage_step
             if abs(v_trial) > abs(v_goal):

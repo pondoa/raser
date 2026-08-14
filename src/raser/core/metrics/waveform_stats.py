@@ -257,15 +257,16 @@ class WaveformStatistics:
         threshold,
         amplitude_threshold,
     ):
-        if my_d.det_model == 'planar' or my_d.det_model == 'lgad':
+        det_model = my_d.det_model.lower()
+        if det_model == 'planar' or det_model == 'lgad':
             my_d.read_ele_num = 1
             self.pitch_x = my_d.l_x
             self.pitch_y = my_d.l_y
-        elif my_d.det_model == 'strip':
+        elif 'strip' in det_model:
             my_d.read_ele_num = my_d.read_ele_num
             self.pitch_x = my_d.p_x
             self.pitch_y = my_d.l_y
-        elif my_d.det_model == 'pixel':
+        elif 'pixel' in det_model:
             my_d.read_ele_num = my_d.x_ele_num * my_d.y_ele_num
             self.pitch_x = my_d.p_x
             self.pitch_y = my_d.p_y

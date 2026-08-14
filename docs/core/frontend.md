@@ -27,13 +27,29 @@ Inter-electrode coupling is represented inside this netlist together with the
 other sensor impedances. The resulting signal distribution is therefore
 evaluated under the impedance presented by the connected AFE.
 
-<!-- TODO: Define the sensor-netlist format and the representation of frequency-dependent Field AC results. -->
+A sensor netlist declares the node used by each Current source and the node
+presented to each AFE channel. The resistive-sheet generator uses sheet size,
+grid dimensions, sheet resistance, backplane capacitance, bias resistance,
+bias-contact positions, coupling capacitance, and readout-contact positions.
+These declarations generate the sheet resistors and sensor capacitors joined
+to the AFE input nodes.
+
+<!-- TODO: Define the representation of frequency-dependent Field AC results. -->
 
 ## AFE modelling
 
 The AFE netlist defines its input impedance, feedback, transfer response,
 bandwidth, noise sources, and output nodes. It may be supplied directly or
 generated from a parameterized AFE definition.
+
+Frontend also accepts a one-sided AFE output-noise spectrum. The spectrum may
+come from an ngspice noise analysis or from explicit input-referred voltage,
+current, flicker, transimpedance, and bandwidth values. Device capacitance
+enters the input-referred calculation with the AFE parameters.
+
+The spectrum is sampled onto the waveform frequency grid and transformed into
+a real time-domain waveform. The random seed, spectral-density unit, frequency
+range, mean, and any requested RMS normalization are explicit inputs.
 
 Frontend converts each electrode current from Current into a circuit current
 source while preserving its sign and time axis. Piecewise-linear sources are

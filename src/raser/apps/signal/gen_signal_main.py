@@ -12,7 +12,6 @@ import array
 import time
 import subprocess
 import json
-import random
 
 import ROOT
 ROOT.gROOT.SetBatch(True)
@@ -24,6 +23,7 @@ from raser.core.interaction.action_initialization import GeneralActionInitializa
 from raser.core.field import devsim_field as devfield
 from raser.core.current import cal_current as ccrt
 from raser.core.frontend.legacy_readout import Amplifier
+from raser.apps._planning import execution_seed
 from .draw_save import energy_deposition, draw_drift_path
 from .experiments import apply_signal_experiment
 
@@ -82,7 +82,7 @@ def main(kwargs):
     if "lgad" in my_d.det_model:
         my_d.gain_rate_cal(my_f)
     
-    g4_seed = random.randint(0,1e7)
+    g4_seed = execution_seed(kwargs)
     interaction_options = {}
     if kwargs.get("_g4_action_initialization") is not None:
         interaction_options["MyActionInitialization"] = kwargs[
@@ -98,7 +98,10 @@ def main(kwargs):
     try:
         my_current = ccrt.CalCurrentG4P(my_d, my_f, my_g4, -1)
         ele_current = Amplifier(
-            my_current.sum_cu, my_d.amplifier, CDet=my_d.capacitance
+            my_current.sum_cu,
+            my_d.amplifier,
+            seed=g4_seed,
+            CDet=my_d.capacitance,
         )
 
         path = kwargs["_run_path"]

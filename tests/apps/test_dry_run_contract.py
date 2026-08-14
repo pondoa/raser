@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 
 from raser.apps._planning import activate_plan
+from raser.apps._planning import execution_seed
 from raser.apps.signal.workflow import build_plan
 from raser.cli.raser import main
 
@@ -121,6 +122,13 @@ def test_execution_activates_one_immutable_plan_before_worker_dispatch(
     changed["voltage"] = 250.0
     with pytest.raises(ValueError, match="different device specification"):
         activate_plan(build_plan(changed), changed)
+
+
+def test_execution_seed_uses_the_recorded_seed_and_worker_offset() -> None:
+    assert execution_seed({"seed": 7}) == 7
+    assert execution_seed({"seed": 7}, offset=20) == 27
+    with pytest.raises(ValueError, match="non-negative"):
+        execution_seed({"seed": -1})
 
 
 def test_global_batch_dry_run_keeps_commands_structured_and_scheduler_idle(

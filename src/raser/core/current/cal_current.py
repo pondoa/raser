@@ -313,6 +313,17 @@ class CalCurrent:
                     self.electron_system, n_x, n_y,
                     x_span, y_span, total_electrodes, "electron"
                 )
+        else:
+            total_electrodes = len(read_out_contact)
+            logger.info(f"电流计算: 多电极配置, 总电极数={total_electrodes}")
+            if self.hole_system:
+                hole_signals_found = self._process_system_current_direct(
+                    self.hole_system, total_electrodes, "hole"
+                )
+            if self.electron_system:
+                electron_signals_found = self._process_system_current_direct(
+                    self.electron_system, total_electrodes, "electron"
+                )
         
         logger.info(f"电流计算完成: 空穴{hole_signals_found}点, 电子{electron_signals_found}点")
         
@@ -403,6 +414,58 @@ class CalCurrent:
                 )
             hist.SetEntries(hist.GetEntries() + float(np.sum(accumulator != 0.0)))
 
+        return signals_found
+
+    def _process_system_current_direct(
+        self, carrier_system, total_electrodes, carrier_type
+    ):
+        if carrier_type == "hole":
+            histograms = self.positive_cu
+        elif carrier_type == "electron":
+            histograms = self.negative_cu
+        else:
+            raise ValueError(f"未知载流子类型: {carrier_type}")
+
+        bin_accumulators = [
+            np.zeros(hist.GetNbinsX() + 2, dtype=np.float64)
+            for hist in histograms
+        ]
+        axis = histograms[0].GetXaxis()
+        x_min = axis.GetXmin()
+        x_max = axis.GetXmax()
+        bin_width = (x_max - x_min) / histograms[0].GetNbinsX()
+        signals_found = 0
+
+        for carrier_idx, carrier_signals in enumerate(carrier_system.signals):
+            if not carrier_signals:
+                continue
+            path = carrier_system.paths_reduced[carrier_idx]
+            for electrode_idx, electrode_signals in enumerate(
+                carrier_signals[:total_electrodes]
+            ):
+                for step_idx, signal_value in enumerate(
+                    electrode_signals[: max(0, len(path) - 1)]
+                ):
+                    time_value = path[step_idx][3] * self.delta_t + t_tol
+                    if time_value < x_min:
+                        bin_idx = 0
+                    elif time_value >= x_max:
+                        bin_idx = histograms[electrode_idx].GetNbinsX() + 1
+                    else:
+                        bin_idx = int((time_value - x_min) / bin_width) + 1
+                    bin_accumulators[electrode_idx][bin_idx] += (
+                        signal_value / self.t_bin
+                    )
+                    signals_found += 1
+
+        for electrode_idx, accumulator in enumerate(bin_accumulators):
+            hist = histograms[electrode_idx]
+            for bin_idx in np.nonzero(accumulator)[0]:
+                hist.SetBinContent(
+                    int(bin_idx),
+                    hist.GetBinContent(int(bin_idx)) + float(accumulator[bin_idx]),
+                )
+            hist.SetEntries(hist.GetEntries() + float(np.sum(accumulator != 0.0)))
         return signals_found
     
     def _apply_smoothing(self):
